@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="LudustierWindow" parent="GtkApplicationWindow">
+    <property name="title" translatable="yes">LudusTier</property>
+    <property name="default-width">800</property>
+    <property name="default-height">600</property>
+    <property name="titlebar">
+      <object class="GtkHeaderBar">
+        <child type="end">
+          <object class="AdwPreferencesGroup">
+      <property name="title">Configurações Gerais</property>
+      <property name="description">Ajuste o comportamento do aplicativo</property>
+
+      <!-- Linha com Switch integrado -->
+      <child>
+        <object class="AdwSwitchRow" id="row_notificacoes">
+          <property name="title">Ativar Notificações</property>
+          <property name="subtitle">Receba avisos na área de trabalho</property>
+          <property name="active">true</property>
+        </object>
+      </child>
+
+      <!-- Linha com Campo de Texto integrado -->
+      <child>
+        <object class="AdwEntryRow" id="row_nome">
+          <property name="title">Nome de Usuário</property>
+        </object>
+      </child>
+    </object>
+          <object class="GtkMenuButton">
+            <property name="primary">True</property>
+            <property name="icon-name">open-menu-symbolic</property>
+            <property name="tooltip-text" translatable="yes">Main Menu</property>
+            <property name="menu-model">primary_menu</property>
+          </object>
+        </child>
+      </object>
+    </property>
+    <property name="child">
+      <object class="GtkLabel" id="label">
+        <property name="label" translatable="yes">Hello, World!</property>
+        <style>
+          <class name="title-1"/>
+        </style>
+      </object>
+    </property>
+  </template>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
+        <attribute name="action">win.show-help-overlay</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About LudusTier</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

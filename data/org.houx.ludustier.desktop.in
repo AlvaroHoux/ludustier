@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=LudusTier
+Exec=ludustier
+Icon=org.houx.ludustier
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true
