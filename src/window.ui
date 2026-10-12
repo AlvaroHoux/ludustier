@@ -1,65 +1,296 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <requires lib="gtk" version="4.0"/>
-  <template class="LudustierWindow" parent="GtkApplicationWindow">
-    <property name="title" translatable="yes">LudusTier</property>
-    <property name="default-width">800</property>
-    <property name="default-height">600</property>
-    <property name="titlebar">
-      <object class="GtkHeaderBar">
-        <child type="end">
-          <object class="AdwPreferencesGroup">
-      <property name="title">Configurações Gerais</property>
-      <property name="description">Ajuste o comportamento do aplicativo</property>
+  <requires lib="Adw" version="1.0"/>
 
-      <!-- Linha com Switch integrado -->
-      <child>
-        <object class="AdwSwitchRow" id="row_notificacoes">
-          <property name="title">Ativar Notificações</property>
-          <property name="subtitle">Receba avisos na área de trabalho</property>
-          <property name="active">true</property>
-        </object>
-      </child>
-
-      <!-- Linha com Campo de Texto integrado -->
-      <child>
-        <object class="AdwEntryRow" id="row_nome">
-          <property name="title">Nome de Usuário</property>
-        </object>
-      </child>
-    </object>
-          <object class="GtkMenuButton">
-            <property name="primary">True</property>
-            <property name="icon-name">open-menu-symbolic</property>
-            <property name="tooltip-text" translatable="yes">Main Menu</property>
-            <property name="menu-model">primary_menu</property>
-          </object>
-        </child>
-      </object>
-    </property>
-    <property name="child">
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello, World!</property>
-        <style>
-          <class name="title-1"/>
-        </style>
-      </object>
-    </property>
-  </template>
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="label" translatable="yes">Exportar como Imagem (PNG)...</attribute>
+        <attribute name="action">win.export_png</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Exportar JSON...</attribute>
+        <attribute name="action">win.export_json</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Importar JSON...</attribute>
+        <attribute name="action">win.import_json</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Limpar Tier List...</attribute>
+        <attribute name="action">win.clear_tierlist</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Preferências</attribute>
         <attribute name="action">app.preferences</attribute>
       </item>
+    </section>
+    <section>
       <item>
-        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
-        <attribute name="action">win.show-help-overlay</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_About LudusTier</attribute>
+        <attribute name="label" translatable="yes">Sobre o LudusTier</attribute>
         <attribute name="action">app.about</attribute>
       </item>
     </section>
   </menu>
+
+  <template class="LudustierWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">LudusTier</property>
+    <property name="default-width">1040</property>
+    <property name="default-height">740</property>
+
+    <property name="content">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwToolbarView" id="toolbar_view">
+
+            <!-- Top HeaderBar -->
+            <child type="top">
+              <object class="AdwHeaderBar">
+                <child type="start">
+                  <object class="GtkBox">
+                    <property name="orientation">horizontal</property>
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkButton" id="btn_add_game">
+                        <property name="icon-name">list-add-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Adicionar jogo</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="btn_add_tier">
+                        <property name="icon-name">folder-new-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Novo tier</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <property name="title-widget">
+                  <object class="AdwWindowTitle" id="window_title">
+                    <property name="title">LudusTier</property>
+                    <property name="subtitle">Tier List</property>
+                  </object>
+                </property>
+
+                <child type="end">
+                  <object class="GtkBox">
+                    <property name="orientation">horizontal</property>
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkToggleButton" id="btn_toggle_search">
+                        <property name="icon-name">system-search-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Pesquisar e filtrar (Ctrl+F)</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkMenuButton" id="btn_view_options">
+                        <property name="icon-name">view-grid-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Visualização e zoom</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkMenuButton">
+                        <property name="primary">True</property>
+                        <property name="icon-name">open-menu-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Menu principal</property>
+                        <property name="menu-model">primary_menu</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <!-- SearchBar (Slide-down with Ctrl+F) -->
+            <child type="top">
+              <object class="GtkSearchBar" id="search_bar">
+                <property name="child">
+                  <object class="AdwClamp">
+                    <property name="maximum-size">900</property>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="orientation">horizontal</property>
+                        <property name="spacing">8</property>
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+
+                        <child>
+                          <object class="GtkSearchEntry" id="filter_search_entry">
+                            <property name="hexpand">True</property>
+                            <property name="placeholder-text" translatable="yes">Buscar títulos...</property>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkDropDown" id="filter_franchise_dropdown">
+                            <property name="tooltip-text" translatable="yes">Filtrar por franquia</property>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkDropDown" id="filter_company_dropdown">
+                            <property name="tooltip-text" translatable="yes">Filtrar por empresa</property>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkDropDown" id="filter_genre_dropdown">
+                            <property name="tooltip-text" translatable="yes">Filtrar por gênero</property>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkButton" id="btn_clear_filters">
+                            <property name="icon-name">edit-clear-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Limpar filtros</property>
+                            <style>
+                              <class name="flat"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+
+            <!-- Main Scrollable Content -->
+            <property name="content">
+              <object class="GtkScrolledWindow">
+                <property name="vexpand">True</property>
+                <property name="hexpand">True</property>
+                <property name="hscrollbar-policy">never</property>
+                <property name="vscrollbar-policy">automatic</property>
+
+                <property name="child">
+                  <object class="AdwClamp">
+                    <property name="maximum-size">1100</property>
+                    <property name="margin-top">18</property>
+                    <property name="margin-bottom">24</property>
+                    <property name="margin-start">12</property>
+                    <property name="margin-end">12</property>
+
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">18</property>
+
+                        <!-- Banner for Active Filter -->
+                        <child>
+                          <object class="AdwBanner" id="filter_banner">
+                            <property name="title">Filtro ativo</property>
+                            <property name="button-label" translatable="yes">Limpar</property>
+                            <property name="revealed">False</property>
+                          </object>
+                        </child>
+
+                        <!-- Empty State (StatusPage) -->
+                        <child>
+                          <object class="AdwStatusPage" id="empty_state">
+                            <property name="icon-name">applications-games-symbolic</property>
+                            <property name="title" translatable="yes">Nenhum Jogo na Lista</property>
+                            <property name="description" translatable="yes">Adicione jogos para começar a montar sua tier list personalizada.</property>
+                            <child>
+                              <object class="GtkButton" id="btn_empty_add_game">
+                                <property name="label" translatable="yes">Adicionar Jogo</property>
+                                <property name="halign">center</property>
+                                <style>
+                                  <class name="pill"/>
+                                  <class name="suggested-action"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+
+                        <!-- Tier List Main Content -->
+                        <child>
+                          <object class="GtkBox" id="main_content_box">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">18</property>
+
+                            <!-- Ranked Tiers Container -->
+                            <child>
+                              <object class="GtkBox" id="tiers_container">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">12</property>
+                              </object>
+                            </child>
+
+                            <!-- Separator -->
+                            <child>
+                              <object class="GtkSeparator">
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">6</property>
+                              </object>
+                            </child>
+
+                            <!-- Unranked Bank -->
+                            <child>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">8</property>
+
+                                <child>
+                                  <object class="GtkBox">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="spacing">8</property>
+                                    <child>
+                                      <object class="GtkLabel">
+                                        <property name="label" translatable="yes">Banco de Jogos</property>
+                                        <property name="halign">start</property>
+                                        <property name="hexpand">True</property>
+                                        <style>
+                                          <class name="title-3"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkLabel" id="unranked_count_label">
+                                        <property name="label">0 jogos</property>
+                                        <style>
+                                          <class name="dimmed"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="GtkBox" id="unranked_container">
+                                    <property name="orientation">vertical</property>
+                                    <property name="hexpand">True</property>
+                                    <style>
+                                      <class name="card"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                          </object>
+                        </child>
+
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </property>
+
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
 </interface>

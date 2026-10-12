@@ -28,7 +28,15 @@ configure_file(
 
 ludustier_sources = [
   '__init__.py',
+  'config.py',
+  'exporter.py',
+  'game_card.py',
+  'game_edit_dialog.py',
   'main.py',
+  'preferences_dialog.py',
+  'search_dialog.py',
+  'steamgrid.py',
+  'tier_dialog.py',
   'window.py',
 ]
 

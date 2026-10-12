@@ -1,0 +1,59 @@
+/* style.css - LudusTier GNOME UI Styling */
+
+/* Tier row card container */
+.tier-card {
+    border-radius: 12px;
+    padding: 8px;
+    margin-bottom: 6px;
+}
+
+/* Tier header badge */
+.tier-header-badge {
+    border-radius: 8px;
+    min-width: 80px;
+    min-height: 72px;
+    font-weight: 800;
+    font-size: 1.25rem;
+    padding: 6px;
+}
+
+/* Game cards */
+.game-card-widget {
+    border-radius: 8px;
+    padding: 4px;
+    transition: transform 150ms ease;
+}
+
+.game-card-widget:hover {
+    transform: translateY(-2px);
+}
+
+.game-cover-image {
+    border-radius: 6px;
+}
+
+/* Drop zones */
+.tier-drop-area {
+    min-height: 72px;
+    border-radius: 8px;
+    transition: background-color 200ms ease;
+}
+
+.tier-drop-area:hover {
+    background-color: alpha(@accent_color, 0.08);
+}
+
+/* Color swatch selection buttons */
+.color-swatch-circle {
+    border-radius: 9999px;
+    padding: 0;
+    min-width: 36px;
+    min-height: 36px;
+    border: 2px solid alpha(currentColor, 0.15);
+}
+
+.color-swatch-circle:checked,
+.color-swatch-circle:active {
+    outline: 2px solid @accent_color;
+    outline-offset: 2px;
+}
