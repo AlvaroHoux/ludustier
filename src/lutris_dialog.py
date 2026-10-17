@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
-from gi.repository import Gtk, Adw, GLib, Pango
+from gi.repository import Gtk, Adw, Pango
 from typing import Callable, Dict, List, Optional, Any
 from .lutris_importer import get_lutris_games, get_heroic_games
 
@@ -108,9 +108,6 @@ class LutrisImportDialog(Adw.Dialog):
             cover_path = g.get("cover_vertical") or g.get("cover_path")
             if cover_path and os.path.exists(cover_path):
                 pic.set_filename(cover_path)
-            else:
-                display = Gdk.Display.get_default() if hasattr(Gdk, "Display") else None
-                pic.set_paintable(None)
             box.append(pic)
 
             # Details

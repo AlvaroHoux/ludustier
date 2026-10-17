@@ -6,3 +6,6 @@ __pycache__/
 _build/
 build/
 *.gresource
+graphify-out/
+.claude/
+CLAUDE.md

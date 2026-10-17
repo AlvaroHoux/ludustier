@@ -49,7 +49,8 @@ def get_lutris_games() -> List[Dict[str, Any]]:
         return []
 
     try:
-        conn = sqlite3.connect(str(db_path))
+        # read-only so a running Lutris holding the DB lock cannot make the import fail
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 

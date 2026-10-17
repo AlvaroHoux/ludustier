@@ -1,88 +1,58 @@
-/* style.css - LudusTier GNOME UI Styling */
+/* style.css - LudusTier: only what libadwaita does not provide */
 
-/* Tier row card container */
-.tier-card {
-    border-radius: 12px;
-    padding: 8px;
-    margin-bottom: 8px;
-}
-
-/* Tier header badge: Fixed width and prominent typography */
 .tier-header-badge {
-    border-radius: 8px;
-    min-width: 100px;
-    max-width: 100px;
-    width: 100px;
+    min-width: 88px;
     font-weight: 800;
-    font-size: 1.6rem;
-    padding: 8px;
-}
-
-/* Game cards */
-.game-card-widget {
-    border-radius: 8px;
-    padding: 4px;
-    transition: transform 150ms ease, outline 150ms ease;
-}
-
-.game-card-widget:hover {
-    transform: translateY(-2px);
-}
-
-.game-card-widget.selected {
-    outline: 2px solid @accent_color;
-    outline-offset: 2px;
-}
-
-.game-cover-image {
+    font-size: 1.5rem;
     border-radius: 6px;
 }
 
-/* Badges on game cards */
-.card-status-badge {
-    background-color: alpha(@window_bg_color, 0.85);
+.game-card-widget {
+    padding: 2px;
+}
+
+.game-card-widget.selected {
+    outline: 2px solid @accent_bg_color;
+    outline-offset: 2px;
+    border-radius: 8px;
+}
+
+.card-status-badge,
+.card-source-badge,
+.card-playtime-badge {
+    background-color: alpha(black, 0.6);
+    color: white;
     border-radius: 9999px;
+    padding: 2px 6px;
+}
+
+.card-status-badge {
     padding: 3px;
 }
 
-.card-source-badge,
-.card-playtime-badge {
-    background-color: alpha(@window_bg_color, 0.85);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-/* Drop zones */
 .tier-drop-area {
     min-height: 90px;
     border-radius: 8px;
-    transition: background-color 200ms ease;
 }
 
-.tier-drop-area:hover {
-    background-color: alpha(@accent_color, 0.08);
-}
-
-/* Color swatch selection buttons */
 .color-swatch-circle {
     border-radius: 9999px;
     padding: 0;
     min-width: 36px;
     min-height: 36px;
-    border: 2px solid alpha(currentColor, 0.15);
 }
 
-.color-swatch-circle:checked,
-.color-swatch-circle:active {
-    outline: 2px solid @accent_color;
+.color-swatch-circle:checked {
+    outline: 2px solid @accent_bg_color;
     outline-offset: 2px;
 }
 
-/* Lutris-inspired Bottom Detail Bar */
 .bottom-detail-bar {
-    border-top: 1px solid alpha(currentColor, 0.1);
-    background-color: @card_bg_color;
+    border-top: 1px solid @borders;
+    background-color: @headerbar_bg_color;
     padding: 12px 18px;
+}
+
+.tier-card {
+    padding: 6px;
 }

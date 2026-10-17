@@ -24,6 +24,7 @@ from .game_card import (
 from .search_dialog import SearchGameDialog
 from .tier_dialog import TierDialog
 from .lutris_dialog import LutrisImportDialog
+from .lutris_importer import get_lutris_games
 from .game_edit_dialog import GameEditDialog
 from .exporter import export_tierlist_to_png, export_tierlist_to_json, import_tierlist_from_json
 
@@ -125,11 +126,23 @@ class LudustierWindow(Adw.ApplicationWindow):
         self._setup_header_buttons()
         self._setup_detail_bar()
 
+        self._sync_lutris_library()
+
         # Initial Render
         self._update_filter_dropdown_models()
         self._build_sidebar_items()
         self._build_tier_rows()
         self._populate_all_games()
+
+    def _sync_lutris_library(self):
+        """Adds Lutris games not yet in the list, skipping ones the user removed."""
+        games = self.tierlist_data["games"]
+        known = {g["id"] for g in games} | set(self.tierlist_data.get("removed_ids", []))
+        titles = {g["title"].lower() for g in games}
+        new = [g for g in get_lutris_games() if g["id"] not in known and g["title"].lower() not in titles]
+        if new:
+            games.extend(new)
+            save_tierlist(self.tierlist_data)
 
     def _register_actions(self):
         act_import = Gio.SimpleAction.new("import_lutris", None)
@@ -487,7 +500,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         else: # poster
             w, h = DIMENSIONS_POSTER.get(self.current_zoom, (120, 180))
 
-        row_min_height = h + 24
+        row_min_height = h + 32
 
         tiers = self.tierlist_data.get("tiers", DEFAULT_TIERS)
         for idx, tier in enumerate(tiers):
@@ -832,6 +845,7 @@ class LudustierWindow(Adw.ApplicationWindow):
                 break
 
         self.tierlist_data["games"] = [g for g in games if g["id"] != game_id]
+        self.tierlist_data.setdefault("removed_ids", []).append(game_id)
         save_tierlist(self.tierlist_data)
 
         self._update_filter_dropdown_models()
@@ -846,6 +860,9 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _undo_delete(self, restored_game: Dict[str, Any]):
         self.tierlist_data.setdefault("games", []).append(restored_game)
+        removed = self.tierlist_data.get("removed_ids", [])
+        if restored_game["id"] in removed:
+            removed.remove(restored_game["id"])
         save_tierlist(self.tierlist_data)
         self._update_filter_dropdown_models()
         self._build_sidebar_items()
@@ -897,10 +914,12 @@ class LudustierWindow(Adw.ApplicationWindow):
         existing_titles = {g["title"].lower() for g in existing_games}
 
         added_count = 0
+        skipped_count = 0
         new_categories = set(self.tierlist_data.get("categories", DEFAULT_CATEGORIES))
 
         for g in imported_games:
             if g["id"] in existing_ids or g["title"].lower() in existing_titles:
+                skipped_count += 1
                 continue
             existing_games.append(g)
             existing_ids.add(g["id"])
@@ -917,7 +936,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         self._build_sidebar_items()
         self._populate_all_games()
 
-        self.toast_overlay.add_toast(Adw.Toast.new(f"{added_count} jogos importados com sucesso!"))
+        self.toast_overlay.add_toast(Adw.Toast.new(f"{added_count} jogos importados ({skipped_count} já existiam)"))
 
     # --------------------------------------------------------------------------
     # Filters & SearchBar
