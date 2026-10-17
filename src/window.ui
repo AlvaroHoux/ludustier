@@ -545,9 +545,11 @@
                                 <property name="reveal-child">False</property>
                                 <property name="transition-type">slide-up</property>
                                 <property name="child">
+                                  <object class="GtkOverlay">
+                                    <property name="child">
                                   <object class="GtkBox" id="detail_bar_box">
                                     <property name="orientation">horizontal</property>
-                                    <property name="spacing">12</property>
+                                    <property name="spacing">8</property>
                                     <style>
                                       <class name="bottom-detail-bar"/>
                                     </style>
@@ -555,9 +557,10 @@
                                     <!-- Thumbnail -->
                                     <child>
                                       <object class="GtkPicture" id="detail_poster_pic">
-                                        <property name="content-fit">contain</property>
                                         <property name="width-request">36</property>
                                         <property name="height-request">54</property>
+                                        <property name="halign">center</property>
+                                        <property name="valign">center</property>
                                         <style>
                                           <class name="card"/>
                                         </style>
@@ -567,8 +570,8 @@
                                     <!-- Info labels -->
                                     <child>
                                       <object class="GtkBox">
-                                        <property name="orientation">vertical</property>
-                                        <property name="spacing">4</property>
+                                        <property name="orientation">horizontal</property>
+                                        <property name="spacing">12</property>
                                         <property name="hexpand">True</property>
                                         <property name="valign">center</property>
 
@@ -628,7 +631,8 @@
                                         <child>
                                           <object class="GtkLabel" id="detail_extra_lbl">
                                             <property name="halign">start</property>
-                                            <property name="wrap">True</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="ellipsize">end</property>
                                             <property name="xalign">0</property>
                                             <style>
                                               <class name="caption"/>
@@ -653,18 +657,26 @@
                                             </style>
                                           </object>
                                         </child>
-                                        <child>
-                                          <object class="GtkButton" id="btn_detail_close">
-                                            <property name="icon-name">window-close-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Fechar painel</property>
-                                            <style>
-                                              <class name="flat"/>
-                                            </style>
-                                          </object>
-                                        </child>
                                       </object>
                                     </child>
 
+                                  </object>
+                                    </property>
+                                    <child type="overlay">
+                                      <object class="GtkButton" id="btn_detail_close">
+                                        <property name="icon-name">window-close-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Fechar painel</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">start</property>
+                                        <property name="margin-top">2</property>
+                                        <property name="margin-end">2</property>
+                                        <style>
+                                          <class name="flat"/>
+                                          <class name="circular"/>
+                                          <class name="detail-close"/>
+                                        </style>
+                                      </object>
+                                    </child>
                                   </object>
                                 </property>
                               </object>

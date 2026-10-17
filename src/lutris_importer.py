@@ -58,7 +58,7 @@ def get_lutris_games() -> List[Dict[str, Any]]:
 
     try:
         # read-only so a running Lutris holding the DB lock cannot make the import fail
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True, timeout=5)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
@@ -131,13 +131,7 @@ def get_lutris_games() -> List[Dict[str, Any]]:
                         banner_path = str(candidate_png)
                         break
 
-            # Infer initial status from playtime
-            if playtime >= 25.0:
-                status = "completed"
-            elif playtime > 0.0:
-                status = "playing"
-            else:
-                status = "backlog"
+            status = "playing" if playtime > 0.0 else "backlog"
 
             # Parse Steam AppID if available
             steam_appid = None
@@ -174,80 +168,49 @@ def get_lutris_games() -> List[Dict[str, Any]]:
         return []
 
 
+def _heroic_game(prefix: str, app_name: str, title: str, store: str, platform: str, service: str, default_platform: str) -> Dict[str, Any]:
+    windows = str(platform or default_platform).lower() == "windows"
+    return {
+        "id": f"heroic_{prefix}_{app_name}",
+        "title": title,
+        "tier": "UNRANKED",
+        "source": "heroic",
+        "platform": "Windows" if windows else "Linux",
+        "runner": "wine" if windows else "linux",
+        "runner_name": "Wine" if windows else "Linux",
+        "service": service,
+        "playtime": 0.0,
+        "installed": True,
+        "status": "backlog",
+        "categories": [store],
+        "cover_vertical": None,
+        "cover_horizontal": None,
+        "cover_path": None,
+        "company": store,
+        "franchise": title,
+        "genres": [],
+    }
+
+
 def get_heroic_games() -> List[Dict[str, Any]]:
-    """
-    Scans for Heroic Games Launcher installations and installed games.
-    """
+    """Scans for Heroic Games Launcher installations and installed games (Epic via Legendary, GOG)."""
     games: List[Dict[str, Any]] = []
     for h_dir in HEROIC_CONFIG_DIRS:
-        if not h_dir.exists():
-            continue
-
-        # 1. Legendary (Epic Games)
-        legendary_installed = h_dir / "legendaryConfig" / "legendary" / "installed.json"
-        if legendary_installed.exists():
-            try:
-                with open(legendary_installed, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for app_name, info in data.items():
-                    title = info.get("title", app_name)
-                    windows = str(info.get("platform", "Windows")).lower() == "windows"
-                    games.append({
-                        "id": f"heroic_epic_{app_name}",
-                        "title": title,
-                        "tier": "UNRANKED",
-                        "source": "heroic",
-                        "platform": "Windows" if windows else "Linux",
-                        "runner": "wine" if windows else "linux",
-                        "runner_name": "Wine" if windows else "Linux",
-                        "service": "epic",
-                        "playtime": 0.0,
-                        "installed": True,
-                        "status": "backlog",
-                        "categories": ["Epic Games"],
-                        "cover_vertical": None,
-                        "cover_horizontal": None,
-                        "cover_path": None,
-                        "company": "Epic Games",
-                        "franchise": title,
-                        "genres": [],
-                    })
-            except Exception as e:
-                print(f"[Heroic Importer] Error reading Legendary config: {e}")
-
-        # 2. GOG installed
-        gog_installed = h_dir / "gog_store" / "installed.json"
-        if gog_installed.exists():
-            try:
-                with open(gog_installed, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                installed_list = data.get("installed", [])
-                if isinstance(installed_list, list):
-                    for info in installed_list:
+        legendary = h_dir / "legendaryConfig" / "legendary" / "installed.json"
+        gog = h_dir / "gog_store" / "installed.json"
+        try:
+            if legendary.exists():
+                with open(legendary, "r", encoding="utf-8") as f:
+                    for app_name, info in json.load(f).items():
+                        games.append(_heroic_game("epic", app_name, info.get("title", app_name), "Epic Games",
+                                                  info.get("platform"), "epic", "Windows"))
+            if gog.exists():
+                with open(gog, "r", encoding="utf-8") as f:
+                    for info in json.load(f).get("installed", []):
                         app_name = info.get("appName", "")
-                        title = info.get("title", app_name or "GOG Game")
-                        windows = str(info.get("platform", "windows")).lower() == "windows"
-                        games.append({
-                            "id": f"heroic_gog_{app_name}",
-                            "title": title,
-                            "tier": "UNRANKED",
-                            "source": "heroic",
-                            "platform": "Windows" if windows else "Linux",
-                            "runner": "wine" if windows else "linux",
-                            "runner_name": "Wine" if windows else "Linux",
-                            "service": "gog",
-                            "playtime": 0.0,
-                            "installed": True,
-                            "status": "backlog",
-                            "categories": ["GOG"],
-                            "cover_vertical": None,
-                            "cover_horizontal": None,
-                            "cover_path": None,
-                            "company": "GOG",
-                            "franchise": title,
-                            "genres": [],
-                        })
-            except Exception as e:
-                print(f"[Heroic Importer] Error reading GOG config: {e}")
+                        games.append(_heroic_game("gog", app_name, info.get("title", app_name or "GOG Game"), "GOG",
+                                                  info.get("platform"), "gog", "windows"))
+        except Exception as e:
+            print(f"[Heroic Importer] Error reading {h_dir}: {e}")
 
     return games

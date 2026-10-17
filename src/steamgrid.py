@@ -143,15 +143,13 @@ def fetch_steam_game_details(steam_appid: int, title: str) -> Dict[str, Any]:
     """
     Fetches full metadata for a Steam game:
     - genres, categories, developers, publishers
-    - checks Steam store page for explicit Franchise tag
-    - falls back to heuristic franchise detector
+    - guesses the franchise from the title
     - computes normalized company name
     """
     developers: List[str] = []
     publishers: List[str] = []
     genres: List[str] = []
     categories: List[str] = []
-    franchise: Optional[str] = None
 
     # 1. Store appdetails API
     try:
@@ -168,26 +166,7 @@ def fetch_steam_game_details(steam_appid: int, title: str) -> Dict[str, Any]:
     except Exception as e:
         print(f"[Steam Details] Error querying appdetails for {steam_appid}: {e}")
 
-    # 2. Store HTML page scraping for Franchise
-    try:
-        page_url = f"https://store.steampowered.com/app/{steam_appid}/"
-        req_page = urllib.request.Request(page_url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
-        with urllib.request.urlopen(req_page, timeout=6) as r:
-            html = r.read().decode("utf-8", errors="ignore")
-            # Look for <b>Franchise:</b> ... <a>Franchise Name</a>
-            m = re.search(r'<b>Franchise:</b>\s*<a[^>]*>(.*?)</a>', html, re.I | re.S)
-            if m:
-                franchise = m.group(1).strip()
-            else:
-                m_notice = re.search(r'class=\"franchise_notice\"[^>]*>(.*?)</a>', html, re.I | re.S)
-                if m_notice:
-                    franchise = m_notice.group(1).strip()
-    except Exception as e:
-        print(f"[Steam Store Page] Error reading store page for {steam_appid}: {e}")
-
-    # Fallback franchise heuristic if not specified on Steam
-    if not franchise:
-        franchise = detect_franchise(title)
+    franchise = detect_franchise(title)
 
     # Compute normalized primary company
     primary_dev = developers[0] if developers else ""

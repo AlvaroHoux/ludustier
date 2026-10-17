@@ -5,6 +5,7 @@
 import json
 import os
 import copy
+import shutil
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -88,8 +89,8 @@ def load_config() -> dict:
 
 def save_config(config_data: dict):
     ensure_directories()
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, indent=2, ensure_ascii=False)
+    _write_json_atomic(config_data, CONFIG_FILE)
+    os.chmod(CONFIG_FILE, 0o600)  # holds the API key
 
 
 def get_steamgriddb_key() -> str:
@@ -102,16 +103,16 @@ def set_steamgriddb_key(key: str):
     save_config(cfg)
 
 
-def load_tierlist(filepath: Path = TIERLIST_FILE) -> dict:
-    ensure_directories()
-    data: Dict[str, Any] = {}
-    if filepath.exists():
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
+def _write_json_atomic(data: dict, filepath: Path):
+    """Writes next to the target and renames, so a crash never leaves a half-written file."""
+    tmp = filepath.with_suffix(filepath.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, filepath)
 
+
+def normalize_tierlist(data: Any) -> dict:
+    """Fills missing keys with defaults and drops games that cannot be shown (no id/title)."""
     if not isinstance(data, dict):
         data = {}
 
@@ -123,6 +124,7 @@ def load_tierlist(filepath: Path = TIERLIST_FILE) -> dict:
 
     if "games" not in data or not isinstance(data["games"], list):
         data["games"] = []
+    data["games"] = [g for g in data["games"] if isinstance(g, dict) and g.get("id") and g.get("title")]
 
     if "categories" not in data or not isinstance(data["categories"], list):
         data["categories"] = copy.deepcopy(DEFAULT_CATEGORIES)
@@ -137,7 +139,25 @@ def load_tierlist(filepath: Path = TIERLIST_FILE) -> dict:
     return data
 
 
+def load_tierlist(filepath: Path = TIERLIST_FILE) -> dict:
+    ensure_directories()
+    data: Any = {}
+    if filepath.exists():
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            # Keep the unreadable file: the next save would otherwise overwrite it with an empty list
+            shutil.copy2(filepath, filepath.with_suffix(filepath.suffix + ".corrupt"))
+            data = {}
+    return normalize_tierlist(data)
+
+
+def backup_tierlist(filepath: Path = TIERLIST_FILE):
+    if filepath.exists():
+        shutil.copy2(filepath, filepath.with_suffix(filepath.suffix + ".bak"))
+
+
 def save_tierlist(data: dict, filepath: Path = TIERLIST_FILE):
     ensure_directories()
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _write_json_atomic(data, filepath)

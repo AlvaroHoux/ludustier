@@ -50,9 +50,16 @@
 .bottom-detail-bar {
     border-top: 1px solid @borders;
     background-color: @headerbar_bg_color;
-    padding: 8px 14px;
+    padding: 3px 8px;
 }
 
 .tier-card {
     padding: 6px;
+}
+
+.bottom-detail-bar button,
+.detail-close {
+    min-height: 0;
+    min-width: 0;
+    padding: 2px 8px;
 }

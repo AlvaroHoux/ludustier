@@ -4,6 +4,7 @@
 
 import os
 import re
+from functools import lru_cache
 from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Pango
 from typing import Callable, List, Dict, Optional, Any
 from .game_edit_dialog import GameEditDialog
@@ -51,6 +52,26 @@ DIMENSIONS_ICON = {
     4: (100, 100),
     5: (120, 120),
 }
+
+
+def cover_pixbuf(path: str, w: int, h: int) -> Optional[GdkPixbuf.Pixbuf]:
+    # keyed by mtime so a re-downloaded cover is not served stale
+    return _cover_pixbuf(path, os.stat(path).st_mtime_ns, w, h)
+
+
+@lru_cache(maxsize=1024)  # zoom and mode changes rebuild every card; decoding is the slow part
+def _cover_pixbuf(path: str, _mtime_ns: int, w: int, h: int) -> Optional[GdkPixbuf.Pixbuf]:
+    """Scales and center-crops the image to exactly w x h, so the card never takes the file's own size."""
+    try:
+        fmt, iw, ih = GdkPixbuf.Pixbuf.get_file_info(path)
+        if not fmt:
+            return None
+        scale = max(w / iw, h / ih)
+        sw, sh = max(w, round(iw * scale)), max(h, round(ih * scale))
+        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, sw, sh, False)
+        return pb.new_subpixbuf((sw - w) // 2, (sh - h) // 2, w, h)
+    except GLib.Error:
+        return None
 
 
 class GameCard(Gtk.Box):
@@ -318,7 +339,7 @@ class GameCard(Gtk.Box):
                 or self.game_data.get("cover_icon")
             )
 
-        pixbuf = self._cover_pixbuf(img_path, w, h) if img_path and os.path.exists(img_path) else None
+        pixbuf = cover_pixbuf(img_path, w, h) if img_path and os.path.exists(img_path) else None
         if pixbuf:
             self.picture.set_pixbuf(pixbuf)
         else:
@@ -338,20 +359,6 @@ class GameCard(Gtk.Box):
         # Title adjustments
         self.title_label.set_max_width_chars(max(8, w // 8))
         self._update_title_visibility()
-
-    @staticmethod
-    def _cover_pixbuf(path: str, w: int, h: int) -> Optional[GdkPixbuf.Pixbuf]:
-        """Scales and center-crops the image to exactly w x h, so the card never takes the file's own size."""
-        try:
-            fmt, iw, ih = GdkPixbuf.Pixbuf.get_file_info(path)
-            if not fmt:
-                return None
-            scale = max(w / iw, h / ih)
-            sw, sh = max(w, round(iw * scale)), max(h, round(ih * scale))
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, sw, sh, False)
-            return pb.new_subpixbuf((sw - w) // 2, (sh - h) // 2, w, h)
-        except GLib.Error:
-            return None
 
     def _setup_menu(self):
         popover = Gtk.Popover()

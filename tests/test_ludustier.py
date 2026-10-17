@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import json
 import os
 import sys
 import tempfile
@@ -39,6 +40,7 @@ from src.config import (
     TIER_COLOR_PALETTE,
     load_tierlist,
     save_tierlist,
+    normalize_tierlist,
     DEFAULT_VIEW_SETTINGS,
 )
 from src.steamgrid import (
@@ -197,6 +199,48 @@ class TestExporter(unittest.TestCase):
                 os.unlink(png_path)
             if os.path.exists(json_path):
                 os.unlink(json_path)
+
+
+class TestDataSafety(unittest.TestCase):
+    def test_corrupt_tierlist_is_kept_and_defaults_returned(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "t.json"
+            f.write_text('{"games": [ {"id": "a"')  # half-written file
+            data = load_tierlist(f)
+            self.assertEqual(data["games"], [])
+            self.assertEqual(f.with_suffix(".json.corrupt").read_text(), '{"games": [ {"id": "a"')
+
+    def test_save_is_atomic_and_normalize_drops_broken_games(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "t.json"
+            save_tierlist({"games": [{"id": "a", "title": "A"}, {"title": "no id"}, "junk"]}, f)
+            self.assertFalse(f.with_suffix(".json.tmp").exists())
+            data = normalize_tierlist(json.loads(f.read_text()))
+            self.assertEqual([g["id"] for g in data["games"]], ["a"])
+            self.assertTrue(data["tiers"])
+
+    def test_lutris_import_reads_runner_platform_and_status(self):
+        import sqlite3
+        from src import lutris_importer as li
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "pga.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE games (id INTEGER, name TEXT, slug TEXT, runner TEXT, platform TEXT, service TEXT, service_id TEXT, playtime REAL, installed INTEGER)")
+            con.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?)", [
+                (1, "Played", "played", "wine", "Windows", None, None, 40.0, 1),
+                (2, "Fresh", "fresh", "pcsx2", "Sony PlayStation 2", None, None, 0.0, 0),
+            ])
+            con.commit(); con.close()
+            old = li.LUTRIS_DB_PATHS
+            li.LUTRIS_DB_PATHS = [db]
+            try:
+                games = {g["title"]: g for g in li.get_lutris_games()}
+            finally:
+                li.LUTRIS_DB_PATHS = old
+            self.assertEqual(games["Played"]["runner_name"], "Wine")
+            self.assertEqual(games["Played"]["status"], "playing")  # long playtime is not "finished"
+            self.assertEqual(games["Fresh"]["platform"], "Sony PlayStation 2")
+            self.assertEqual(games["Fresh"]["status"], "backlog")
 
 
 class TestWindowAndFeatures(unittest.TestCase):
@@ -360,6 +404,49 @@ class TestWindowAndFeatures(unittest.TestCase):
         self.assertFalse(self.win.game_cards["g2"].get_parent().get_visible()) # RE Village has no "4"
         self.assertFalse(self.win.game_cards["g3"].get_parent().get_visible())
         self.assertFalse(self.win.game_cards["g4"].get_parent().get_visible())
+
+    def test_move_game_between_tiers_and_sidebar_filters(self):
+        from gi.repository import GLib
+        self.win.tierlist_data["games"] = [
+            {"id": "a", "title": "A", "tier": "UNRANKED", "runner_name": "Wine", "platform": "Windows"},
+            {"id": "b", "title": "B", "tier": "UNRANKED", "runner_name": "Linux", "platform": "Linux"},
+        ]
+        self.win._populate_all_games()
+        self.win.move_game_to_tier("a", "S")
+        ctx = GLib.MainContext.default()
+        while ctx.iteration(False):
+            pass
+        self.assertEqual(self.win.tierlist_data["games"][0]["tier"], "S")
+        self.assertIs(self.win.game_cards["a"].get_parent().get_parent(), self.win.tier_flowboxes["S"])
+
+        self.win.current_sidebar_mode = "runner:Wine"
+        self.win._apply_filters()
+        self.assertTrue(self.win.library_cards["a"].get_parent().get_visible())
+        self.assertFalse(self.win.library_cards["b"].get_parent().get_visible())
+        self.win.current_sidebar_mode = "platform:Linux"
+        self.win._apply_filters()
+        self.assertFalse(self.win.library_cards["a"].get_parent().get_visible())
+        self.assertTrue(self.win.library_cards["b"].get_parent().get_visible())
+
+    def test_lutris_sync_skips_removed_games(self):
+        from src import window as window_module
+        fresh = [
+            {"id": "lutris_1", "title": "Kept", "tier": "UNRANKED", "runner": "wine", "runner_name": "Wine", "platform": "Windows", "playtime": 5.0},
+            {"id": "lutris_2", "title": "Removed", "tier": "UNRANKED"},
+        ]
+        self.win.tierlist_data["games"] = [{"id": "lutris_1", "title": "Kept", "tier": "S", "playtime": 1.0}]
+        self.win.tierlist_data["removed_ids"] = ["lutris_2"]
+        original = window_module.get_lutris_games
+        window_module.get_lutris_games = lambda: fresh
+        try:
+            self.win._sync_lutris_library()
+        finally:
+            window_module.get_lutris_games = original
+        games = self.win.tierlist_data["games"]
+        self.assertEqual([g["id"] for g in games], ["lutris_1"])
+        self.assertEqual(games[0]["tier"], "S")          # user's tier untouched
+        self.assertEqual(games[0]["runner_name"], "Wine")  # metadata refreshed
+        self.assertEqual(games[0]["playtime"], 5.0)
 
     def test_game_edit_dialog_logic(self):
         from src.game_edit_dialog import GameEditDialog

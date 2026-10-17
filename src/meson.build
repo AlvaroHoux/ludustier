@@ -37,6 +37,7 @@ ludustier_sources = [
   'lutris_dialog.py',
   'preferences_dialog.py',
   'search_dialog.py',
+  'sidebar.py',
   'steamgrid.py',
   'tier_dialog.py',
   'window.py',
