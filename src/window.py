@@ -37,6 +37,14 @@ VIEW_MODES = [
 ]
 
 
+BADGE_OPTIONS = {
+    "show_title": "Título",
+    "show_playtime": "Horas jogadas",
+    "show_status": "Status",
+    "show_platform": "Plataforma e runner",
+}
+
+
 @Gtk.Template(resource_path='/org/houx/ludustier/window.ui')
 class LudustierWindow(Adw.ApplicationWindow):
     __gtype_name__ = 'LudustierWindow'
@@ -85,6 +93,7 @@ class LudustierWindow(Adw.ApplicationWindow):
     detail_platform_lbl = Gtk.Template.Child()
     detail_playtime_lbl = Gtk.Template.Child()
     detail_status_lbl = Gtk.Template.Child()
+    detail_extra_lbl = Gtk.Template.Child()
     detail_tier_lbl = Gtk.Template.Child()
     btn_detail_edit = Gtk.Template.Child()
     btn_detail_close = Gtk.Template.Child()
@@ -103,6 +112,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         view_settings = self.tierlist_data.get("view_settings", {})
         self.current_zoom = view_settings.get("zoom_level", 3)
         self.current_view_mode = view_settings.get("view_mode", "poster")
+        self.badge_settings = {k: view_settings.get(k, True) for k in BADGE_OPTIONS}
 
         # Active filter state
         self.filter_search = ""
@@ -461,6 +471,16 @@ class LudustierWindow(Adw.ApplicationWindow):
         tier_id = game_data.get("tier", "UNRANKED")
         self.detail_tier_lbl.set_label(f"Tier: {tier_id}")
 
+        extra = [
+            f"Empresa: {game_data['company']}" if game_data.get("company") else "",
+            f"Franquia: {game_data['franchise']}" if game_data.get("franchise") else "",
+            f"Gêneros: {', '.join(game_data['genres'])}" if game_data.get("genres") else "",
+            f"Categorias: {', '.join(game_data['categories'])}" if game_data.get("categories") else "",
+            f"Origem: {game_data.get('source', '').title()}" if game_data.get("source") else "",
+            "Instalado" if game_data.get("installed") else ("Não instalado" if "installed" in game_data else ""),
+        ]
+        self.detail_extra_lbl.set_label(" • ".join(x for x in extra if x))
+
         cover_path = game_data.get("cover_vertical") or game_data.get("cover_path")
         if cover_path and os.path.exists(cover_path):
             self.detail_poster_pic.set_filename(cover_path)
@@ -532,10 +552,32 @@ class LudustierWindow(Adw.ApplicationWindow):
         scale.connect("value-changed", self._on_zoom_changed)
         box.append(scale)
 
+        sep2 = Gtk.Separator()
+        sep2.set_margin_top(4)
+        sep2.set_margin_bottom(4)
+        box.append(sep2)
+
+        lbl_info = Gtk.Label(label="Informações nos Cards")
+        lbl_info.add_css_class("caption-heading")
+        lbl_info.set_halign(Gtk.Align.START)
+        box.append(lbl_info)
+        for key, label in BADGE_OPTIONS.items():
+            chk = Gtk.CheckButton(label=label)
+            chk.set_active(self.badge_settings[key])
+            chk.connect("toggled", self._on_badge_option_toggled, key)
+            box.append(chk)
+
         popover.set_child(box)
         self.btn_view_options.set_popover(popover)
 
+    def _on_badge_option_toggled(self, chk: Gtk.CheckButton, key: str):
+        self.badge_settings[key] = chk.get_active()
+        self._save_view_settings()
+        for card in (*self.game_cards.values(), *self.library_cards.values()):
+            card.set_badges(self.badge_settings)
+
     def _save_view_settings(self):
+        self.tierlist_data.setdefault("view_settings", {}).update(self.badge_settings)
         self.tierlist_data.setdefault("view_settings", {})["view_mode"] = self.current_view_mode
         self.tierlist_data.setdefault("view_settings", {})["zoom_level"] = self.current_zoom
         save_tierlist(self.tierlist_data)
@@ -793,7 +835,7 @@ class LudustierWindow(Adw.ApplicationWindow):
             if target_fb:
                 target_fb.append(card)
 
-            lib_card = self._make_card(game, tiers, on_selected=self._show_game_in_detail_bar)
+            lib_card = self._make_card(game, tiers)
             self.library_cards[gid] = lib_card
             self.library_flowbox.append(lib_card)
 
@@ -808,7 +850,8 @@ class LudustierWindow(Adw.ApplicationWindow):
             on_updated=self.update_game_data,
             view_mode=self.current_view_mode,
             zoom_level=self.current_zoom,
-            on_selected=on_selected,
+            on_selected=on_selected or self._show_game_in_detail_bar,
+            badges=self.badge_settings,
         )
 
     def _apply_filters(self):

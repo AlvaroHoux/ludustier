@@ -330,7 +330,11 @@
 
                 <!-- Content Pane (ViewStack for TierList vs Library Grid) -->
                 <property name="content">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
                   <object class="AdwViewStack" id="main_view_stack">
+                    <property name="vexpand">True</property>
 
                     <!-- Page 1: Tier List View -->
                     <child>
@@ -527,6 +531,14 @@
                               </object>
                             </child>
 
+
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                  </object>
+                    </child>
                             <!-- Bottom Action / Detail Bar (Lutris Style) -->
                             <child>
                               <object class="GtkRevealer" id="detail_bar_revealer">
@@ -535,7 +547,7 @@
                                 <property name="child">
                                   <object class="GtkBox" id="detail_bar_box">
                                     <property name="orientation">horizontal</property>
-                                    <property name="spacing">16</property>
+                                    <property name="spacing">12</property>
                                     <style>
                                       <class name="bottom-detail-bar"/>
                                     </style>
@@ -544,8 +556,8 @@
                                     <child>
                                       <object class="GtkPicture" id="detail_poster_pic">
                                         <property name="content-fit">contain</property>
-                                        <property name="width-request">44</property>
-                                        <property name="height-request">66</property>
+                                        <property name="width-request">36</property>
+                                        <property name="height-request">54</property>
                                         <style>
                                           <class name="card"/>
                                         </style>
@@ -565,7 +577,7 @@
                                             <property name="label">Título do Jogo</property>
                                             <property name="halign">start</property>
                                             <style>
-                                              <class name="title-3"/>
+                                              <class name="heading"/>
                                             </style>
                                           </object>
                                         </child>
@@ -612,6 +624,18 @@
                                             </child>
                                           </object>
                                         </child>
+
+                                        <child>
+                                          <object class="GtkLabel" id="detail_extra_lbl">
+                                            <property name="halign">start</property>
+                                            <property name="wrap">True</property>
+                                            <property name="xalign">0</property>
+                                            <style>
+                                              <class name="caption"/>
+                                              <class name="dimmed"/>
+                                            </style>
+                                          </object>
+                                        </child>
                                       </object>
                                     </child>
 
@@ -645,12 +669,6 @@
                                 </property>
                               </object>
                             </child>
-
-                          </object>
-                        </property>
-                      </object>
-                    </child>
-
                   </object>
                 </property>
 

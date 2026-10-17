@@ -51,6 +51,10 @@ TIER_COLOR_PALETTE = [
 DEFAULT_VIEW_SETTINGS = {
     "zoom_level": 3,      # 1: XS, 2: S, 3: M, 4: L, 5: XL
     "view_mode": "poster", # "poster" (vertical 600x900), "header" (banner), "icon" (compact)
+    "show_title": True,     # info shown on each card
+    "show_playtime": True,
+    "show_status": True,
+    "show_platform": True,
 }
 
 STATUS_CHOICES = [

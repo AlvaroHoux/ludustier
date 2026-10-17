@@ -70,6 +70,7 @@ class GameCard(Gtk.Box):
         view_mode: str = "poster",
         zoom_level: int = 3,
         on_selected: Optional[Callable[[Dict[str, Any]], None]] = None,
+        badges: Optional[Dict[str, bool]] = None,
     ):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.game_data = game_data
@@ -81,6 +82,7 @@ class GameCard(Gtk.Box):
         self.view_mode = view_mode
         self.zoom_level = zoom_level
         self.on_selected = on_selected
+        self.badges = badges if badges is not None else {}
 
         # Strictly align to start and avoid horizontal stretching
         self.set_halign(Gtk.Align.START)
@@ -243,6 +245,21 @@ class GameCard(Gtk.Box):
             self.playtime_badge.set_visible(True)
         else:
             self.playtime_badge.set_visible(False)
+        self.status_badge.set_visible(self.status_badge.get_visible() and self._shown("show_status"))
+        self.source_badge.set_visible(self.source_badge.get_visible() and self._shown("show_platform"))
+        self.playtime_badge.set_visible(self.playtime_badge.get_visible() and self._shown("show_playtime"))
+
+    def _shown(self, key: str) -> bool:
+        return self.badges.get(key, True)
+
+    def set_badges(self, badges: Dict[str, bool]):
+        self.badges = badges
+        self._update_badges()
+        self._update_title_visibility()
+
+    def _update_title_visibility(self):
+        small_icon = self.view_mode == "icon" and self.zoom_level <= 2
+        self.title_label.set_visible(self._shown("show_title") and not small_icon)
 
     def _update_tooltip(self):
         title = self.game_data.get("title", "")
@@ -319,11 +336,8 @@ class GameCard(Gtk.Box):
                 self.picture.set_paintable(None)
 
         # Title adjustments
-        if view_mode == "icon" and self.zoom_level <= 2:
-            self.title_label.set_visible(False)
-        else:
-            self.title_label.set_visible(True)
-            self.title_label.set_max_width_chars(max(8, w // 8))
+        self.title_label.set_max_width_chars(max(8, w // 8))
+        self._update_title_visibility()
 
     @staticmethod
     def _cover_pixbuf(path: str, w: int, h: int) -> Optional[GdkPixbuf.Pixbuf]:
