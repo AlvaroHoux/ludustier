@@ -127,12 +127,41 @@ class LudustierWindow(Adw.ApplicationWindow):
         self._setup_detail_bar()
 
         self._sync_lutris_library()
+        self._setup_drag_autoscroll()
 
         # Initial Render
         self._update_filter_dropdown_models()
         self._build_sidebar_items()
         self._build_tier_rows()
         self._populate_all_games()
+
+    def _setup_drag_autoscroll(self):
+        """Scrolls the tier list while a card is dragged near its top or bottom edge."""
+        scrolled = self.main_content_box.get_ancestor(Gtk.ScrolledWindow)
+        adj = scrolled.get_vadjustment()
+        state = {"y": None, "source": 0}
+        edge, max_speed = 80, 24
+
+        def tick():
+            y, h = state["y"], scrolled.get_height()
+            if y is None:
+                state["source"] = 0
+                return False
+            if y < edge:
+                adj.set_value(adj.get_value() - max_speed * (edge - y) / edge)
+            elif y > h - edge:
+                adj.set_value(adj.get_value() + max_speed * (y - (h - edge)) / edge)
+            return True
+
+        def on_motion(_ctl, _x, y):
+            state["y"] = y
+            if not state["source"]:
+                state["source"] = GLib.timeout_add(16, tick)
+
+        motion = Gtk.DropControllerMotion()
+        motion.connect("motion", on_motion)
+        motion.connect("leave", lambda _c: state.update(y=None))
+        scrolled.add_controller(motion)
 
     def _sync_lutris_library(self):
         """Adds Lutris games not yet in the list, skipping ones the user removed."""

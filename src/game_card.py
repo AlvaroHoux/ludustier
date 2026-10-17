@@ -146,6 +146,12 @@ class GameCard(Gtk.Box):
         click_gesture.connect("released", self._on_card_clicked)
         self.add_controller(click_gesture)
 
+        # Right click opens the same menu as the "..." button
+        right_click = Gtk.GestureClick.new()
+        right_click.set_button(Gdk.BUTTON_SECONDARY)
+        right_click.connect("pressed", lambda *_: self.menu_button.popup())
+        self.add_controller(right_click)
+
         # Setup Drag Source for Tier List DnD
         self._setup_drag_source()
 
@@ -162,6 +168,11 @@ class GameCard(Gtk.Box):
         drag_source = Gtk.DragSource.new()
         drag_source.set_actions(Gdk.DragAction.MOVE)
         drag_source.connect("prepare", lambda s, x, y: Gdk.ContentProvider.new_for_value(self.game_id))
+        # The card's own snapshot follows the pointer while dragging
+        drag_source.connect(
+            "drag-begin",
+            lambda src, drag: src.set_icon(Gtk.WidgetPaintable.new(self), self.get_width() // 2, self.get_height() // 2),
+        )
         self.add_controller(drag_source)
 
     def _update_badges(self):
