@@ -4,37 +4,59 @@
 .tier-card {
     border-radius: 12px;
     padding: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
-/* Tier header badge */
+/* Tier header badge: Fixed width and prominent typography */
 .tier-header-badge {
     border-radius: 8px;
-    min-width: 80px;
-    min-height: 72px;
+    min-width: 100px;
+    max-width: 100px;
+    width: 100px;
     font-weight: 800;
-    font-size: 1.25rem;
-    padding: 6px;
+    font-size: 1.6rem;
+    padding: 8px;
 }
 
 /* Game cards */
 .game-card-widget {
     border-radius: 8px;
     padding: 4px;
-    transition: transform 150ms ease;
+    transition: transform 150ms ease, outline 150ms ease;
 }
 
 .game-card-widget:hover {
     transform: translateY(-2px);
 }
 
+.game-card-widget.selected {
+    outline: 2px solid @accent_color;
+    outline-offset: 2px;
+}
+
 .game-cover-image {
     border-radius: 6px;
 }
 
+/* Badges on game cards */
+.card-status-badge {
+    background-color: alpha(@window_bg_color, 0.85);
+    border-radius: 9999px;
+    padding: 3px;
+}
+
+.card-source-badge,
+.card-playtime-badge {
+    background-color: alpha(@window_bg_color, 0.85);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
 /* Drop zones */
 .tier-drop-area {
-    min-height: 72px;
+    min-height: 90px;
     border-radius: 8px;
     transition: background-color 200ms ease;
 }
@@ -56,4 +78,11 @@
 .color-swatch-circle:active {
     outline: 2px solid @accent_color;
     outline-offset: 2px;
+}
+
+/* Lutris-inspired Bottom Detail Bar */
+.bottom-detail-bar {
+    border-top: 1px solid alpha(currentColor, 0.1);
+    background-color: @card_bg_color;
+    padding: 12px 18px;
 }

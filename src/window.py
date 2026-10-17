@@ -9,13 +9,22 @@ from typing import Dict, List, Optional, Any
 
 from .config import (
     DEFAULT_TIERS,
+    STATUS_CHOICES,
+    DEFAULT_CATEGORIES,
     load_tierlist,
     save_tierlist,
     ensure_directories,
 )
-from .game_card import GameCard
+from .game_card import (
+    GameCard,
+    DIMENSIONS_POSTER,
+    DIMENSIONS_HEADER,
+    DIMENSIONS_ICON,
+)
 from .search_dialog import SearchGameDialog
 from .tier_dialog import TierDialog
+from .lutris_dialog import LutrisImportDialog
+from .game_edit_dialog import GameEditDialog
 from .exporter import export_tierlist_to_png, export_tierlist_to_json, import_tierlist_from_json
 
 
@@ -33,8 +42,11 @@ class LudustierWindow(Adw.ApplicationWindow):
     # Template Children
     toast_overlay = Gtk.Template.Child()
     toolbar_view = Gtk.Template.Child()
+    btn_toggle_sidebar = Gtk.Template.Child()
     btn_add_game = Gtk.Template.Child()
+    btn_import_lutris = Gtk.Template.Child()
     btn_add_tier = Gtk.Template.Child()
+    window_title = Gtk.Template.Child()
     btn_toggle_search = Gtk.Template.Child()
     btn_view_options = Gtk.Template.Child()
 
@@ -45,6 +57,15 @@ class LudustierWindow(Adw.ApplicationWindow):
     filter_genre_dropdown = Gtk.Template.Child()
     btn_clear_filters = Gtk.Template.Child()
 
+    split_view = Gtk.Template.Child()
+    sidebar_nav_list = Gtk.Template.Child()
+    sidebar_status_list = Gtk.Template.Child()
+    btn_add_category = Gtk.Template.Child()
+    sidebar_category_list = Gtk.Template.Child()
+    sidebar_source_list = Gtk.Template.Child()
+
+    main_view_stack = Gtk.Template.Child()
+
     filter_banner = Gtk.Template.Child()
     empty_state = Gtk.Template.Child()
     btn_empty_add_game = Gtk.Template.Child()
@@ -54,6 +75,19 @@ class LudustierWindow(Adw.ApplicationWindow):
     unranked_container = Gtk.Template.Child()
     unranked_count_label = Gtk.Template.Child()
 
+    library_title_label = Gtk.Template.Child()
+    library_flowbox = Gtk.Template.Child()
+    detail_bar_revealer = Gtk.Template.Child()
+    detail_bar_box = Gtk.Template.Child()
+    detail_poster_pic = Gtk.Template.Child()
+    detail_title_lbl = Gtk.Template.Child()
+    detail_platform_lbl = Gtk.Template.Child()
+    detail_playtime_lbl = Gtk.Template.Child()
+    detail_status_lbl = Gtk.Template.Child()
+    detail_tier_lbl = Gtk.Template.Child()
+    btn_detail_edit = Gtk.Template.Child()
+    btn_detail_close = Gtk.Template.Child()
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         ensure_directories()
@@ -61,6 +95,8 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.tierlist_data = load_tierlist()
         self.tier_flowboxes: Dict[str, Gtk.FlowBox] = {}
         self.game_cards: Dict[str, GameCard] = {}
+        self.library_cards: Dict[str, GameCard] = {}
+        self.selected_game_for_detail: Optional[Dict[str, Any]] = None
 
         # View settings state
         view_settings = self.tierlist_data.get("view_settings", {})
@@ -73,6 +109,9 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.filter_company = "Todas as Empresas"
         self.filter_genre = "Todos os Gêneros"
 
+        # Active sidebar filter state
+        self.current_sidebar_mode = "tierlist" # "tierlist", "all", "status:X", "category:X", "source:X"
+
         # Signal block flag during dropdown rebuilds
         self._updating_filter_models = False
 
@@ -80,16 +119,23 @@ class LudustierWindow(Adw.ApplicationWindow):
         self._register_actions()
 
         # Connect UI Controls
+        self._setup_sidebar()
         self._setup_search_and_filters()
         self._setup_view_options_popover()
         self._setup_header_buttons()
+        self._setup_detail_bar()
 
         # Initial Render
         self._update_filter_dropdown_models()
+        self._build_sidebar_items()
         self._build_tier_rows()
         self._populate_all_games()
 
     def _register_actions(self):
+        act_import = Gio.SimpleAction.new("import_lutris", None)
+        act_import.connect("activate", self._on_import_lutris_action)
+        self.add_action(act_import)
+
         act_clear = Gio.SimpleAction.new("clear_tierlist", None)
         act_clear.connect("activate", self._on_clear_tierlist_action)
         self.add_action(act_clear)
@@ -114,7 +160,9 @@ class LudustierWindow(Adw.ApplicationWindow):
     def _setup_header_buttons(self):
         self.btn_add_game.connect("clicked", self._on_add_game_clicked)
         self.btn_empty_add_game.connect("clicked", self._on_add_game_clicked)
+        self.btn_import_lutris.connect("clicked", self._on_import_lutris_action)
         self.btn_add_tier.connect("clicked", self._on_add_tier_clicked)
+        self.btn_add_category.connect("clicked", self._on_add_category_clicked)
 
         # Connect SearchBar with ToggleButton
         self.btn_toggle_search.bind_property(
@@ -126,6 +174,212 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.search_bar.set_key_capture_widget(self)
         self.search_bar.connect_entry(self.filter_search_entry)
         self.filter_banner.connect("button-clicked", lambda _: self._on_clear_filters_clicked(None))
+
+    def _setup_sidebar(self):
+        # Sync toggle button with split_view show-sidebar
+        self.btn_toggle_sidebar.bind_property(
+            "active",
+            self.split_view,
+            "show-sidebar",
+            GObject.BindingFlags.BIDIRECTIONAL
+        )
+
+        self.sidebar_nav_list.connect("row-activated", self._on_nav_row_activated)
+        self.sidebar_status_list.connect("row-activated", self._on_status_row_activated)
+        self.sidebar_category_list.connect("row-activated", self._on_category_row_activated)
+        self.sidebar_source_list.connect("row-activated", self._on_source_row_activated)
+
+    def _build_sidebar_items(self):
+        # 1. Navigation items: Tier List & Todos os Jogos
+        while child := self.sidebar_nav_list.get_first_child():
+            self.sidebar_nav_list.remove(child)
+
+        all_games = self.tierlist_data.get("games", [])
+        total_count = len(all_games)
+
+        row_tierlist = self._create_sidebar_row("view-column-symbolic", "Tier List")
+        row_tierlist.mode_id = "tierlist"
+        self.sidebar_nav_list.append(row_tierlist)
+
+        row_all = self._create_sidebar_row("applications-games-symbolic", "Todos os Jogos", str(total_count))
+        row_all.mode_id = "all"
+        self.sidebar_nav_list.append(row_all)
+
+        # 2. Status items
+        while child := self.sidebar_status_list.get_first_child():
+            self.sidebar_status_list.remove(child)
+
+        for s in STATUS_CHOICES:
+            s_id = s["id"]
+            count = sum(1 for g in all_games if g.get("status") == s_id)
+            row_s = self._create_sidebar_row(s["icon"], s["name"], str(count) if count > 0 else "")
+            row_s.status_id = s_id
+            self.sidebar_status_list.append(row_s)
+
+        # 3. Category items
+        while child := self.sidebar_category_list.get_first_child():
+            self.sidebar_category_list.remove(child)
+
+        cats = self.tierlist_data.get("categories", DEFAULT_CATEGORIES)
+        for cat in cats:
+            count = sum(1 for g in all_games if cat in g.get("categories", []))
+            row_c = self._create_sidebar_row("folder-symbolic", cat, str(count) if count > 0 else "")
+            row_c.category_name = cat
+            self.sidebar_category_list.append(row_c)
+
+        # 4. Source items
+        while child := self.sidebar_source_list.get_first_child():
+            self.sidebar_source_list.remove(child)
+
+        lutris_count = sum(1 for g in all_games if g.get("source") == "lutris")
+        row_lutris = self._create_sidebar_row("applications-games-symbolic", "Lutris", str(lutris_count) if lutris_count > 0 else "")
+        row_lutris.source_id = "lutris"
+        self.sidebar_source_list.append(row_lutris)
+
+        heroic_count = sum(1 for g in all_games if g.get("source") == "heroic")
+        row_heroic = self._create_sidebar_row("applications-games-symbolic", "Heroic", str(heroic_count) if heroic_count > 0 else "")
+        row_heroic.source_id = "heroic"
+        self.sidebar_source_list.append(row_heroic)
+
+    def _create_sidebar_row(self, icon_name: str, label_text: str, badge_text: str = "") -> Gtk.ListBoxRow:
+        row = Gtk.ListBoxRow()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        box.set_margin_top(6)
+        box.set_margin_bottom(6)
+        box.set_margin_start(8)
+        box.set_margin_end(8)
+
+        icon = Gtk.Image.new_from_icon_name(icon_name)
+        icon.set_pixel_size(16)
+        box.append(icon)
+
+        lbl = Gtk.Label(label=label_text)
+        lbl.set_halign(Gtk.Align.START)
+        lbl.set_hexpand(True)
+        box.append(lbl)
+
+        if badge_text:
+            badge = Gtk.Label(label=badge_text)
+            badge.add_css_class("dimmed")
+            badge.add_css_class("caption")
+            box.append(badge)
+
+        row.set_child(box)
+        return row
+
+    def _on_nav_row_activated(self, listbox, row):
+        mode = getattr(row, "mode_id", "tierlist")
+        if mode == "tierlist":
+            self.current_sidebar_mode = "tierlist"
+            self.main_view_stack.set_visible_child_name("tierlist")
+            self.window_title.set_subtitle("Tier List")
+        else:
+            self.current_sidebar_mode = "all"
+            self.main_view_stack.set_visible_child_name("library")
+            self.library_title_label.set_label("Todos os Jogos")
+            self.window_title.set_subtitle("Todos os Jogos")
+        self._populate_all_games()
+
+    def _on_status_row_activated(self, listbox, row):
+        s_id = getattr(row, "status_id", "")
+        self.current_sidebar_mode = f"status:{s_id}"
+        s_name = next((s["name"] for s in STATUS_CHOICES if s["id"] == s_id), s_id)
+        self.main_view_stack.set_visible_child_name("library")
+        self.library_title_label.set_label(f"Status: {s_name}")
+        self.window_title.set_subtitle(s_name)
+        self._populate_all_games()
+
+    def _on_category_row_activated(self, listbox, row):
+        cat_name = getattr(row, "category_name", "")
+        self.current_sidebar_mode = f"category:{cat_name}"
+        self.main_view_stack.set_visible_child_name("library")
+        self.library_title_label.set_label(f"Categoria: {cat_name}")
+        self.window_title.set_subtitle(cat_name)
+        self._populate_all_games()
+
+    def _on_source_row_activated(self, listbox, row):
+        src_id = getattr(row, "source_id", "")
+        self.current_sidebar_mode = f"source:{src_id}"
+        src_name = "Lutris" if src_id == "lutris" else "Heroic"
+        self.main_view_stack.set_visible_child_name("library")
+        self.library_title_label.set_label(f"Fonte: {src_name}")
+        self.window_title.set_subtitle(src_name)
+        self._populate_all_games()
+
+    def _on_add_category_clicked(self, _):
+        dialog = Adw.AlertDialog.new("Nova Categoria", "Digite o nome da nova categoria para seus jogos.")
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Nome da categoria (ex: Favoritos, RPGs)")
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", "Cancelar")
+        dialog.add_response("create", "Criar")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+
+        def handle_response(d, response):
+            if response == "create":
+                name = entry.get_text().strip()
+                if name:
+                    cats = self.tierlist_data.setdefault("categories", copy.deepcopy(DEFAULT_CATEGORIES))
+                    if name not in cats:
+                        cats.append(name)
+                        save_tierlist(self.tierlist_data)
+                        self._build_sidebar_items()
+                        self.toast_overlay.add_toast(Adw.Toast.new(f"Categoria '{name}' criada"))
+
+        dialog.connect("response", handle_response)
+        dialog.present(self)
+
+    def _setup_detail_bar(self):
+        self.btn_detail_close.connect("clicked", lambda _: self.detail_bar_revealer.set_reveal_child(False))
+        self.btn_detail_edit.connect("clicked", self._on_detail_edit_clicked)
+
+    def _on_detail_edit_clicked(self, _):
+        if not self.selected_game_for_detail:
+            return
+        dialog = GameEditDialog(
+            parent_window=self,
+            game_data=self.selected_game_for_detail,
+            on_saved=self._on_detail_saved,
+        )
+        dialog.present(self)
+
+    def _on_detail_saved(self, updated_data: Dict[str, Any]):
+        games = self.tierlist_data.get("games", [])
+        for i, g in enumerate(games):
+            if g["id"] == updated_data["id"]:
+                games[i] = updated_data
+                break
+        save_tierlist(self.tierlist_data)
+        self._build_sidebar_items()
+        self._populate_all_games()
+        self._show_game_in_detail_bar(updated_data)
+
+    def _show_game_in_detail_bar(self, game_data: Dict[str, Any]):
+        self.selected_game_for_detail = game_data
+        self.detail_title_lbl.set_label(game_data.get("title", ""))
+
+        platform = game_data.get("platform") or "Linux"
+        runner = game_data.get("runner") or game_data.get("source", "")
+        self.detail_platform_lbl.set_label(f"Plataforma: {platform} ({runner})")
+
+        playtime = float(game_data.get("playtime") or 0)
+        self.detail_playtime_lbl.set_label(f"Tempo: {playtime:.1f}h" if playtime > 0 else "Tempo: 0h")
+
+        status_id = game_data.get("status", "backlog")
+        status_name = next((s["name"] for s in STATUS_CHOICES if s["id"] == status_id), status_id)
+        self.detail_status_lbl.set_label(f"Status: {status_name}")
+
+        tier_id = game_data.get("tier", "UNRANKED")
+        self.detail_tier_lbl.set_label(f"Tier: {tier_id}")
+
+        cover_path = game_data.get("cover_vertical") or game_data.get("cover_path")
+        if cover_path and os.path.exists(cover_path):
+            self.detail_poster_pic.set_filename(cover_path)
+            self.detail_poster_pic.set_visible(True)
+        else:
+            self.detail_poster_pic.set_visible(False)
+
+        self.detail_bar_revealer.set_reveal_child(True)
 
     def _setup_search_and_filters(self):
         self.filter_search_entry.connect("search-changed", self._on_search_query_changed)
@@ -148,52 +402,75 @@ class LudustierWindow(Adw.ApplicationWindow):
         lbl_mode.set_halign(Gtk.Align.START)
         box.append(lbl_mode)
 
-        mode_model = Gtk.StringList.new([m["label"] for m in VIEW_MODES])
-        self.dropdown_view_mode = Gtk.DropDown.new(mode_model, None)
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        btn_poster = Gtk.ToggleButton(label="Pôster")
+        btn_header = Gtk.ToggleButton(label="Banner")
+        btn_icon = Gtk.ToggleButton(label="Ícone")
 
-        initial_idx = 0
-        for i, m in enumerate(VIEW_MODES):
-            if m["mode"] == self.current_view_mode:
-                initial_idx = i
-                break
-        self.dropdown_view_mode.set_selected(initial_idx)
-        self.dropdown_view_mode.connect("notify::selected", self._on_view_mode_changed)
-        box.append(self.dropdown_view_mode)
+        btn_header.set_group(btn_poster)
+        btn_icon.set_group(btn_poster)
+
+        if self.current_view_mode == "header":
+            btn_header.set_active(True)
+        elif self.current_view_mode == "icon":
+            btn_icon.set_active(True)
+        else:
+            btn_poster.set_active(True)
+
+        btn_poster.connect("toggled", lambda b: b.get_active() and self._set_view_mode("poster"))
+        btn_header.connect("toggled", lambda b: b.get_active() and self._set_view_mode("header"))
+        btn_icon.connect("toggled", lambda b: b.get_active() and self._set_view_mode("icon"))
+
+        mode_box.append(btn_poster)
+        mode_box.append(btn_header)
+        mode_box.append(btn_icon)
+        box.append(mode_box)
 
         sep = Gtk.Separator()
         sep.set_margin_top(4)
         sep.set_margin_bottom(4)
         box.append(sep)
 
-        # Section: Zoom
-        lbl_zoom = Gtk.Label(label="Tamanho do Zoom")
+        # Section: Zoom Scale (1 to 5)
+        lbl_zoom = Gtk.Label(label="Nível de Zoom")
         lbl_zoom.add_css_class("caption-heading")
         lbl_zoom.set_halign(Gtk.Align.START)
         box.append(lbl_zoom)
 
-        zoom_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        zoom_box.add_css_class("linked")
-        zoom_box.set_halign(Gtk.Align.CENTER)
-
-        btn_zoom_out = Gtk.Button(icon_name="zoom-out-symbolic", tooltip_text="Diminuir tamanho")
-        btn_zoom_out.connect("clicked", self._on_zoom_out_clicked)
-        zoom_box.append(btn_zoom_out)
-
-        btn_zoom_in = Gtk.Button(icon_name="zoom-in-symbolic", tooltip_text="Aumentar tamanho")
-        btn_zoom_in.connect("clicked", self._on_zoom_in_clicked)
-        zoom_box.append(btn_zoom_in)
-
-        box.append(zoom_box)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 5, 1)
+        scale.set_draw_value(True)
+        scale.set_value_pos(Gtk.PositionType.RIGHT)
+        scale.set_value(self.current_zoom)
+        scale.connect("value-changed", self._on_zoom_changed)
+        box.append(scale)
 
         popover.set_child(box)
         self.btn_view_options.set_popover(popover)
 
-    # --------------------------------------------------------------------------
-    # Tier Rows Construction
-    # --------------------------------------------------------------------------
+    def _save_view_settings(self):
+        self.tierlist_data.setdefault("view_settings", {})["view_mode"] = self.current_view_mode
+        self.tierlist_data.setdefault("view_settings", {})["zoom_level"] = self.current_zoom
+        save_tierlist(self.tierlist_data)
+
+    def _set_view_mode(self, mode: str):
+        self.current_view_mode = mode
+        self._save_view_settings()
+        self._build_tier_rows()
+        self._populate_all_games()
+
+    def _on_zoom_changed(self, scale: Gtk.Scale):
+        new_val = int(round(scale.get_value()))
+        if new_val != self.current_zoom:
+            self.current_zoom = new_val
+            self._save_view_settings()
+            self._build_tier_rows()
+            self._populate_all_games()
 
     def _build_tier_rows(self):
-        """Construct the configurable tier rows and the unranked bank."""
+        """
+        Constructs the configurable tier rows with fixed width badges (100px)
+        and consistent minimum row heights, preventing jarring resizes.
+        """
         while child := self.tiers_container.get_first_child():
             self.tiers_container.remove(child)
 
@@ -202,6 +479,16 @@ class LudustierWindow(Adw.ApplicationWindow):
 
         self.tier_flowboxes.clear()
 
+        # Calculate consistent minimum row height based on current view mode and zoom
+        if self.current_view_mode == "header":
+            w, h = DIMENSIONS_HEADER.get(self.current_zoom, (176, 82))
+        elif self.current_view_mode == "icon":
+            w, h = DIMENSIONS_ICON.get(self.current_zoom, (80, 80))
+        else: # poster
+            w, h = DIMENSIONS_POSTER.get(self.current_zoom, (120, 180))
+
+        row_min_height = h + 24
+
         tiers = self.tierlist_data.get("tiers", DEFAULT_TIERS)
         for idx, tier in enumerate(tiers):
             tid = tier["id"]
@@ -209,12 +496,15 @@ class LudustierWindow(Adw.ApplicationWindow):
                 continue
 
             row_card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            row_card.set_size_request(-1, row_min_height)
             row_card.add_css_class("card")
             row_card.add_css_class("tier-card")
 
-            # Tier Header Badge
-            header_badge = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            header_badge.set_size_request(85, 72)
+            # Tier Header Badge: strictly fixed width (100px)
+            header_badge = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            header_badge.set_size_request(100, -1)
+            header_badge.set_hexpand(False)
+            header_badge.set_vexpand(True)
             header_badge.set_valign(Gtk.Align.FILL)
             header_badge.add_css_class("tier-header-badge")
 
@@ -230,24 +520,31 @@ class LudustierWindow(Adw.ApplicationWindow):
                 )
             header_badge.add_css_class(f"tier-badge-{tid}")
 
-            lbl = Gtk.Label(label=tier.get("name", tid))
-            lbl.set_hexpand(True)
-            lbl.set_vexpand(True)
-            header_badge.append(lbl)
-
-            # Options menu button
+            # Top action bar inside badge
+            badge_top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
             tier_menu_btn = Gtk.MenuButton()
             tier_menu_btn.set_icon_name("view-more-symbolic")
             tier_menu_btn.set_tooltip_text("Opções do tier")
             tier_menu_btn.add_css_class("flat")
             tier_menu_btn.set_valign(Gtk.Align.START)
             tier_menu_btn.set_halign(Gtk.Align.END)
+            tier_menu_btn.set_hexpand(True)
             self._setup_tier_menu(tier_menu_btn, tier, idx, len(tiers))
-            header_badge.append(tier_menu_btn)
+            badge_top_box.append(tier_menu_btn)
+            header_badge.append(badge_top_box)
+
+            # Prominent Centered Tier Letter Label
+            lbl = Gtk.Label(label=tier.get("name", tid))
+            lbl.add_css_class("title-1")
+            lbl.set_halign(Gtk.Align.CENTER)
+            lbl.set_valign(Gtk.Align.CENTER)
+            lbl.set_hexpand(True)
+            lbl.set_vexpand(True)
+            header_badge.append(lbl)
 
             row_card.append(header_badge)
 
-            # FlowBox for games
+            # FlowBox for games in this tier
             flowbox = self._create_tier_flowbox(tid)
             row_card.append(flowbox)
 
@@ -265,13 +562,11 @@ class LudustierWindow(Adw.ApplicationWindow):
         box.set_margin_start(6)
         box.set_margin_end(6)
 
-        # Edit Tier Button
         btn_edit = Gtk.Button(label="Editar tier (nome e cor)")
         btn_edit.add_css_class("flat")
         btn_edit.connect("clicked", lambda _: (popover.popdown(), self._on_edit_tier_clicked(tier)))
         box.append(btn_edit)
 
-        # Move Up Button
         btn_up = Gtk.Button(label="Mover para cima")
         btn_up.add_css_class("flat")
         if index <= 0:
@@ -279,7 +574,6 @@ class LudustierWindow(Adw.ApplicationWindow):
         btn_up.connect("clicked", lambda _: (popover.popdown(), self._move_tier(index, index - 1)))
         box.append(btn_up)
 
-        # Move Down Button
         btn_down = Gtk.Button(label="Mover para baixo")
         btn_down.add_css_class("flat")
         if index >= total_tiers - 1:
@@ -290,7 +584,6 @@ class LudustierWindow(Adw.ApplicationWindow):
         sep = Gtk.Separator()
         box.append(sep)
 
-        # Delete Tier Button
         btn_del = Gtk.Button(label="Excluir tier")
         btn_del.add_css_class("destructive-action")
         btn_del.connect("clicked", lambda _: (popover.popdown(), self._on_delete_tier_clicked(tier)))
@@ -301,8 +594,9 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _create_tier_flowbox(self, tier_id: str) -> Gtk.FlowBox:
         flowbox = Gtk.FlowBox()
-        flowbox.set_valign(Gtk.Align.START)
+        flowbox.set_valign(Gtk.Align.FILL)
         flowbox.set_hexpand(True)
+        flowbox.set_vexpand(True)
         flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
         flowbox.set_min_children_per_line(1)
         flowbox.set_max_children_per_line(30)
@@ -320,10 +614,6 @@ class LudustierWindow(Adw.ApplicationWindow):
     def _on_game_dropped(self, dest_tier_id: str, game_id: str) -> bool:
         self.move_game_to_tier(game_id, dest_tier_id)
         return True
-
-    # --------------------------------------------------------------------------
-    # Tier Operations: Add, Edit, Move, Delete
-    # --------------------------------------------------------------------------
 
     def _on_add_tier_clicked(self, _):
         dialog = TierDialog(parent_window=self, tier_data=None, on_saved=self._on_tier_added)
@@ -361,7 +651,6 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _on_delete_tier_clicked(self, tier: Dict[str, Any]):
         tid = tier["id"]
-        # Move all games in this tier to UNRANKED
         for g in self.tierlist_data.get("games", []):
             if g.get("tier") == tid:
                 g["tier"] = "UNRANKED"
@@ -370,45 +659,150 @@ class LudustierWindow(Adw.ApplicationWindow):
         save_tierlist(self.tierlist_data)
         self._build_tier_rows()
         self._populate_all_games()
-        self.toast_overlay.add_toast(Adw.Toast.new(f"Tier '{tier['name']}' excluído"))
+        self.toast_overlay.add_toast(Adw.Toast.new(f"Tier '{tier['name']}' removido"))
 
     # --------------------------------------------------------------------------
-    # Games Population and Rendering
+    # Populating Games in Tiers and Library Grid
     # --------------------------------------------------------------------------
 
     def _populate_all_games(self):
-        self.game_cards.clear()
-
+        # 1. Clear existing FlowBoxes
         for fb in self.tier_flowboxes.values():
             while child := fb.get_first_child():
                 fb.remove(child)
 
+        while child := self.library_flowbox.get_first_child():
+            self.library_flowbox.remove(child)
+
+        self.game_cards.clear()
+        self.library_cards.clear()
+
+        all_games = self.tierlist_data.get("games", [])
+        total_games_count = len(all_games)
+
+        # Empty state toggle for tier list
+        if total_games_count == 0:
+            self.empty_state.set_visible(True)
+            self.main_content_box.set_visible(False)
+        else:
+            self.empty_state.set_visible(False)
+            self.main_content_box.set_visible(True)
+
         tiers = self.tierlist_data.get("tiers", DEFAULT_TIERS)
-        games = self.tierlist_data.get("games", [])
+        unranked_visible_count = 0
 
-        # Update empty state visibility
-        has_games = len(games) > 0
-        self.empty_state.set_visible(not has_games)
-        self.main_content_box.set_visible(has_games)
-
-        for game in games:
+        for game in all_games:
+            gid = game["id"]
             tier_id = game.get("tier", "UNRANKED")
-            if tier_id not in self.tier_flowboxes:
-                tier_id = "UNRANKED"
 
+            # --- Add to Tierlist View ---
             card = GameCard(
                 game_data=game,
                 tiers=tiers,
                 on_tier_changed=self.move_game_to_tier,
                 on_deleted=self.delete_game,
-                on_updated=self.update_game,
+                on_updated=self.update_game_data,
                 view_mode=self.current_view_mode,
                 zoom_level=self.current_zoom,
             )
-            self.game_cards[game["id"]] = card
-            self.tier_flowboxes[tier_id].append(card)
+            self.game_cards[gid] = card
+
+            target_fb = self.tier_flowboxes.get(tier_id)
+            if not target_fb:
+                target_fb = self.tier_flowboxes.get("UNRANKED")
+
+            if target_fb:
+                target_fb.append(card)
+
+            # --- Add to Library View ---
+            lib_card = GameCard(
+                game_data=game,
+                tiers=tiers,
+                on_tier_changed=self.move_game_to_tier,
+                on_deleted=self.delete_game,
+                on_updated=self.update_game_data,
+                view_mode=self.current_view_mode,
+                zoom_level=self.current_zoom,
+                on_selected=self._show_game_in_detail_bar,
+            )
+            self.library_cards[gid] = lib_card
+            self.library_flowbox.append(lib_card)
 
         self._apply_filters()
+
+    def _apply_filters(self):
+        unranked_visible_count = 0
+        for gid, card in self.game_cards.items():
+            matches = self._game_matches_filters(card.game_data)
+            card.set_visible(matches)
+            if matches and card.game_data.get("tier", "UNRANKED") == "UNRANKED":
+                unranked_visible_count += 1
+
+        for gid, card in self.library_cards.items():
+            matches = self._game_matches_filters(card.game_data) and self._game_matches_sidebar_selection(card.game_data)
+            card.set_visible(matches)
+
+        self.unranked_count_label.set_label(f"{unranked_visible_count} jogos")
+        self._update_filter_banner()
+
+    def _game_matches_sidebar_selection(self, game: Dict[str, Any]) -> bool:
+        mode = self.current_sidebar_mode
+        if mode in ("tierlist", "all"):
+            return True
+        if mode.startswith("status:"):
+            target_status = mode.split(":", 1)[1]
+            return game.get("status") == target_status
+        if mode.startswith("category:"):
+            target_cat = mode.split(":", 1)[1]
+            return target_cat in game.get("categories", [])
+        if mode.startswith("source:"):
+            target_src = mode.split(":", 1)[1]
+            return game.get("source") == target_src
+        return True
+
+    def _game_matches_filters(self, game: Dict[str, Any]) -> bool:
+        title = game.get("title", "").lower()
+        franchise = (game.get("franchise") or "").lower()
+        company = (game.get("company") or "").lower()
+        genres = [g.lower() for g in game.get("genres", [])]
+
+        if self.filter_search and self.filter_search.lower() not in title:
+            return False
+
+        if self.filter_franchise != "Todas as Franquias":
+            if franchise != self.filter_franchise.lower():
+                return False
+
+        if self.filter_company != "Todas as Empresas":
+            if company != self.filter_company.lower():
+                return False
+
+        if self.filter_genre != "Todos os Gêneros":
+            if self.filter_genre.lower() not in genres:
+                return False
+
+        return True
+
+    def _update_filter_banner(self):
+        active_parts = []
+        if self.filter_search:
+            active_parts.append(f"Busca: '{self.filter_search}'")
+        if self.filter_franchise != "Todas as Franquias":
+            active_parts.append(f"Franquia: {self.filter_franchise}")
+        if self.filter_company != "Todas as Empresas":
+            active_parts.append(f"Empresa: {self.filter_company}")
+        if self.filter_genre != "Todos os Gêneros":
+            active_parts.append(f"Gênero: {self.filter_genre}")
+
+        if active_parts:
+            self.filter_banner.set_title(" • ".join(active_parts))
+            self.filter_banner.set_revealed(True)
+        else:
+            self.filter_banner.set_revealed(False)
+
+    # --------------------------------------------------------------------------
+    # Game CRUD & Drag-and-Drop
+    # --------------------------------------------------------------------------
 
     def move_game_to_tier(self, game_id: str, new_tier_id: str):
         for g in self.tierlist_data.get("games", []):
@@ -418,21 +812,32 @@ class LudustierWindow(Adw.ApplicationWindow):
         save_tierlist(self.tierlist_data)
         self._populate_all_games()
 
+    def update_game_data(self, updated_game: Dict[str, Any]):
+        games = self.tierlist_data.get("games", [])
+        for i, g in enumerate(games):
+            if g["id"] == updated_game["id"]:
+                games[i] = updated_game
+                break
+        save_tierlist(self.tierlist_data)
+        self._update_filter_dropdown_models()
+        self._build_sidebar_items()
+        self._populate_all_games()
+
     def delete_game(self, game_id: str):
         deleted_game = None
-        for g in self.tierlist_data.get("games", []):
+        games = self.tierlist_data.get("games", [])
+        for g in games:
             if g["id"] == game_id:
                 deleted_game = g
                 break
 
-        self.tierlist_data["games"] = [
-            g for g in self.tierlist_data.get("games", []) if g["id"] != game_id
-        ]
+        self.tierlist_data["games"] = [g for g in games if g["id"] != game_id]
         save_tierlist(self.tierlist_data)
+
         self._update_filter_dropdown_models()
+        self._build_sidebar_items()
         self._populate_all_games()
 
-        # Provide Undo Toast
         if deleted_game:
             toast = Adw.Toast.new(f"'{deleted_game.get('title')}' removido")
             toast.set_button_label("Desfazer")
@@ -443,109 +848,108 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.tierlist_data.setdefault("games", []).append(restored_game)
         save_tierlist(self.tierlist_data)
         self._update_filter_dropdown_models()
+        self._build_sidebar_items()
         self._populate_all_games()
+        self.toast_overlay.add_toast(Adw.Toast.new(f"'{restored_game.get('title')}' restaurado"))
 
-    def update_game(self, updated_data: Dict[str, Any]):
-        games = self.tierlist_data.get("games", [])
-        for i, g in enumerate(games):
-            if g["id"] == updated_data["id"]:
-                games[i] = updated_data
-                break
-        save_tierlist(self.tierlist_data)
-        self._update_filter_dropdown_models()
-        self._apply_filters()
-        self.toast_overlay.add_toast(Adw.Toast.new("Informações atualizadas"))
+    # --------------------------------------------------------------------------
+    # Adding Games & Lutris/Heroic Import
+    # --------------------------------------------------------------------------
 
     def _on_add_game_clicked(self, _):
-        dialog = SearchGameDialog(parent_window=self, on_game_selected=self._on_game_added)
+        dialog = SearchGameDialog(
+            parent_window=self,
+            tiers=self.tierlist_data.get("tiers", DEFAULT_TIERS),
+            categories=self.tierlist_data.get("categories", DEFAULT_CATEGORIES),
+            on_game_selected=self._on_game_added_from_dialog,
+        )
         dialog.present(self)
 
-    def _on_game_added(self, game_data: Dict[str, Any]):
-        game_data["tier"] = "UNRANKED"
-
-        existing = [g for g in self.tierlist_data.get("games", []) if g["id"] == game_data["id"]]
-        if not existing:
-            self.tierlist_data.setdefault("games", []).append(game_data)
-            save_tierlist(self.tierlist_data)
-            self._update_filter_dropdown_models()
-            self._populate_all_games()
-            self.toast_overlay.add_toast(Adw.Toast.new(f"'{game_data['title']}' adicionado ao banco"))
-
-    # --------------------------------------------------------------------------
-    # Filter Engine
-    # --------------------------------------------------------------------------
-
-    def _update_filter_dropdown_models(self):
-        self._updating_filter_models = True
-
-        games = self.tierlist_data.get("games", [])
-        franchises = set()
-        companies = set()
-        genres = set()
-
-        for g in games:
-            fr = g.get("franchise")
-            if fr:
-                franchises.add(fr.strip())
-
-            co = g.get("company")
-            if co:
-                companies.add(co.strip())
-            for dev in g.get("developers", []):
-                if dev:
-                    companies.add(dev.strip())
-            for pub in g.get("publishers", []):
-                if pub:
-                    companies.add(pub.strip())
-
-            for genre in g.get("genres", []):
-                if genre:
-                    genres.add(genre.strip())
-
-        franchise_items = ["Todas as Franquias"] + sorted(list(franchises))
-        company_items = ["Todas as Empresas"] + sorted(list(companies))
-        genre_items = ["Todos os Gêneros"] + sorted(list(genres))
-
-        self.filter_franchise_dropdown.set_model(Gtk.StringList.new(franchise_items))
-        self.filter_company_dropdown.set_model(Gtk.StringList.new(company_items))
-        self.filter_genre_dropdown.set_model(Gtk.StringList.new(genre_items))
-
-        self._restore_dropdown_selection(self.filter_franchise_dropdown, franchise_items, self.filter_franchise)
-        self._restore_dropdown_selection(self.filter_company_dropdown, company_items, self.filter_company)
-        self._restore_dropdown_selection(self.filter_genre_dropdown, genre_items, self.filter_genre)
-
-        self._updating_filter_models = False
-
-    def _restore_dropdown_selection(self, dropdown: Gtk.DropDown, items: List[str], target: str):
-        if target in items:
-            dropdown.set_selected(items.index(target))
+    def _on_game_added_from_dialog(self, game_data: Dict[str, Any]):
+        games = self.tierlist_data.setdefault("games", [])
+        for i, g in enumerate(games):
+            if g["id"] == game_data["id"]:
+                games[i] = game_data
+                break
         else:
-            dropdown.set_selected(0)
+            games.append(game_data)
 
-    def _on_search_query_changed(self, entry: Gtk.SearchEntry):
-        self.filter_search = entry.get_text().strip().lower()
-        self._apply_filters()
+        save_tierlist(self.tierlist_data)
+        self._update_filter_dropdown_models()
+        self._build_sidebar_items()
+        self._populate_all_games()
+        self.toast_overlay.add_toast(Adw.Toast.new(f"'{game_data.get('title')}' adicionado"))
 
-    def _on_franchise_filter_changed(self, dropdown: Gtk.DropDown, _):
+    def _on_import_lutris_action(self, *args):
+        dialog = LutrisImportDialog(
+            parent_window=self,
+            tiers=self.tierlist_data.get("tiers", DEFAULT_TIERS),
+            on_imported=self._on_games_imported_from_lutris,
+        )
+        dialog.present(self)
+
+    def _on_games_imported_from_lutris(self, imported_games: List[Dict[str, Any]]):
+        if not imported_games:
+            return
+
+        existing_games = self.tierlist_data.setdefault("games", [])
+        existing_ids = {g["id"] for g in existing_games}
+        existing_titles = {g["title"].lower() for g in existing_games}
+
+        added_count = 0
+        new_categories = set(self.tierlist_data.get("categories", DEFAULT_CATEGORIES))
+
+        for g in imported_games:
+            if g["id"] in existing_ids or g["title"].lower() in existing_titles:
+                continue
+            existing_games.append(g)
+            existing_ids.add(g["id"])
+            existing_titles.add(g["title"].lower())
+            added_count += 1
+
+            for c in g.get("categories", []):
+                new_categories.add(c)
+
+        self.tierlist_data["categories"] = list(new_categories)
+        save_tierlist(self.tierlist_data)
+
+        self._update_filter_dropdown_models()
+        self._build_sidebar_items()
+        self._populate_all_games()
+
+        self.toast_overlay.add_toast(Adw.Toast.new(f"{added_count} jogos importados com sucesso!"))
+
+    # --------------------------------------------------------------------------
+    # Filters & SearchBar
+    # --------------------------------------------------------------------------
+
+    def _on_search_query_changed(self, entry):
+        self.filter_search = entry.get_text().strip()
+        self._populate_all_games()
+
+    def _on_franchise_filter_changed(self, dropdown, _):
         if self._updating_filter_models:
             return
-        selected = dropdown.get_selected_item()
-        self.filter_franchise = selected.get_string() if selected else "Todas as Franquias"
-        self._apply_filters()
+        selected_item = dropdown.get_selected_item()
+        if selected_item:
+            self.filter_franchise = selected_item.get_string()
+            self._populate_all_games()
 
-    def _on_company_filter_changed(self, dropdown: Gtk.DropDown, _):
+    def _on_company_filter_changed(self, dropdown, _):
         if self._updating_filter_models:
             return
-        selected = dropdown.get_selected_item()
-        self.filter_company = selected.get_string() if selected else "Todas as Empresas"
-        self._apply_filters()
+        selected_item = dropdown.get_selected_item()
+        if selected_item:
+            self.filter_company = selected_item.get_string()
+            self._populate_all_games()
 
-    def _on_genre_filter_changed(self, dropdown: Gtk.DropDown, _):
+    def _on_genre_filter_changed(self, dropdown, _):
         if self._updating_filter_models:
             return
-        selected = dropdown.get_selected_item()
-        self.filter_genre = selected.get_string() if selected else "Todos os Gêneros"
-        self._apply_filters()
+        selected_item = dropdown.get_selected_item()
+        if selected_item:
+            self.filter_genre = selected_item.get_string()
+            self._populate_all_games()
 
     def _on_clear_filters_clicked(self, _):
         self.filter_search_entry.set_text("")
@@ -556,161 +960,116 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.filter_franchise = "Todas as Franquias"
         self.filter_company = "Todas as Empresas"
         self.filter_genre = "Todos os Gêneros"
-        self._apply_filters()
+        self._populate_all_games()
 
-    def _apply_filters(self):
-        total_games = len(self.tierlist_data.get("games", []))
-        visible_games = 0
-        unranked_visible = 0
+    def _update_filter_dropdown_models(self):
+        self._updating_filter_models = True
 
-        for game_id, card in self.game_cards.items():
-            g = card.game_data
-            matches = True
+        franchises = set()
+        companies = set()
+        genres = set()
 
-            if self.filter_search:
-                title = g.get("title", "").lower()
-                if self.filter_search not in title:
-                    matches = False
+        for g in self.tierlist_data.get("games", []):
+            if f := g.get("franchise"):
+                franchises.add(f)
+            if c := g.get("company"):
+                companies.add(c)
+            for gen in g.get("genres", []):
+                if gen:
+                    genres.add(gen)
 
-            if matches and self.filter_franchise != "Todas as Franquias":
-                g_fr = g.get("franchise") or ""
-                if g_fr.strip().lower() != self.filter_franchise.strip().lower():
-                    matches = False
+        f_list = ["Todas as Franquias"] + sorted(list(franchises))
+        c_list = ["Todas as Empresas"] + sorted(list(companies))
+        g_list = ["Todos os Gêneros"] + sorted(list(genres))
 
-            if matches and self.filter_company != "Todas as Empresas":
-                comp_match = False
-                c_filter = self.filter_company.strip().lower()
-                if (g.get("company") or "").strip().lower() == c_filter:
-                    comp_match = True
-                for dev in g.get("developers", []):
-                    if dev.strip().lower() == c_filter:
-                        comp_match = True
-                for pub in g.get("publishers", []):
-                    if pub.strip().lower() == c_filter:
-                        comp_match = True
-                if not comp_match:
-                    matches = False
+        self.filter_franchise_dropdown.set_model(Gtk.StringList.new(f_list))
+        self.filter_company_dropdown.set_model(Gtk.StringList.new(c_list))
+        self.filter_genre_dropdown.set_model(Gtk.StringList.new(g_list))
 
-            if matches and self.filter_genre != "Todos os Gêneros":
-                g_genres = [gen.strip().lower() for gen in g.get("genres", [])]
-                if self.filter_genre.strip().lower() not in g_genres:
-                    matches = False
-
-            card.set_visible(matches)
-            if matches:
-                visible_games += 1
-                if g.get("tier") == "UNRANKED":
-                    unranked_visible += 1
-
-        self.unranked_count_label.set_label(f"{unranked_visible} jogos")
-
-        active_filters = []
-        if self.filter_search:
-            active_filters.append(f'"{self.filter_search}"')
-        if self.filter_franchise != "Todas as Franquias":
-            active_filters.append(self.filter_franchise)
-        if self.filter_company != "Todas as Empresas":
-            active_filters.append(self.filter_company)
-        if self.filter_genre != "Todos os Gêneros":
-            active_filters.append(self.filter_genre)
-
-        if active_filters:
-            desc = " • ".join(active_filters)
-            self.filter_banner.set_title(f"Filtrando por: {desc} ({visible_games} de {total_games} jogos)")
-            self.filter_banner.set_revealed(True)
-        else:
-            self.filter_banner.set_revealed(False)
+        self._updating_filter_models = False
 
     # --------------------------------------------------------------------------
-    # Zoom and View Mode Controls
-    # --------------------------------------------------------------------------
-
-    def _on_view_mode_changed(self, dropdown: Gtk.DropDown, _):
-        idx = dropdown.get_selected()
-        if 0 <= idx < len(VIEW_MODES):
-            self.current_view_mode = VIEW_MODES[idx]["mode"]
-            self._save_view_settings()
-            for card in self.game_cards.values():
-                card.apply_view_settings(self.current_view_mode, self.current_zoom)
-
-    def _on_zoom_in_clicked(self, _):
-        if self.current_zoom < 5:
-            self.current_zoom += 1
-            self._save_view_settings()
-            for card in self.game_cards.values():
-                card.apply_view_settings(self.current_view_mode, self.current_zoom)
-
-    def _on_zoom_out_clicked(self, _):
-        if self.current_zoom > 1:
-            self.current_zoom -= 1
-            self._save_view_settings()
-            for card in self.game_cards.values():
-                card.apply_view_settings(self.current_view_mode, self.current_zoom)
-
-    def _save_view_settings(self):
-        self.tierlist_data.setdefault("view_settings", {})
-        self.tierlist_data["view_settings"]["zoom_level"] = self.current_zoom
-        self.tierlist_data["view_settings"]["view_mode"] = self.current_view_mode
-        save_tierlist(self.tierlist_data)
-
-    # --------------------------------------------------------------------------
-    # Export and Import Operations
+    # Export / Import / Clear Actions
     # --------------------------------------------------------------------------
 
     def _on_export_png_action(self, action, param):
-        file_dialog = Gtk.FileDialog()
-        file_dialog.set_title("Exportar Tier List como Imagem PNG")
+        file_dialog = Gtk.FileDialog.new()
+        file_dialog.set_title("Salvar Imagem da Tier List")
         file_dialog.set_initial_name("minha_tierlist.png")
 
-        def on_saved_png(dialog, result):
+        png_filter = Gtk.FileFilter.new()
+        png_filter.set_name("Imagem PNG (*.png)")
+        png_filter.add_pattern("*.png")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(png_filter)
+        file_dialog.set_filters(filters)
+
+        def on_saved(dialog, result):
             try:
                 gfile = dialog.save_finish(result)
-                path = gfile.get_path()
-                if path:
-                    if not path.lower().endswith(".png"):
-                        path += ".png"
-                    success = export_tierlist_to_png(self.tierlist_data, path)
+                if gfile:
+                    out_path = gfile.get_path()
+                    success = export_tierlist_to_png(
+                        self.tierlist_data,
+                        out_path,
+                        view_mode=self.current_view_mode,
+                        zoom_level=self.current_zoom,
+                    )
                     if success:
-                        self.toast_overlay.add_toast(Adw.Toast.new("Imagem exportada com sucesso"))
+                        self.toast_overlay.add_toast(Adw.Toast.new("Imagem PNG exportada com sucesso"))
+                    else:
+                        self.toast_overlay.add_toast(Adw.Toast.new("Erro ao exportar imagem PNG"))
             except Exception as e:
                 print(f"[Export PNG] Cancelled: {e}")
 
-        file_dialog.save(self, None, on_saved_png)
+        file_dialog.save(self, None, on_saved)
 
     def _on_export_json_action(self, action, param):
-        file_dialog = Gtk.FileDialog()
-        file_dialog.set_title("Exportar Tier List em JSON")
+        file_dialog = Gtk.FileDialog.new()
+        file_dialog.set_title("Exportar Tier List (JSON)")
         file_dialog.set_initial_name("tierlist_backup.json")
+
+        json_filter = Gtk.FileFilter.new()
+        json_filter.set_name("Arquivo JSON (*.json)")
+        json_filter.add_pattern("*.json")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(json_filter)
+        file_dialog.set_filters(filters)
 
         def on_saved_json(dialog, result):
             try:
                 gfile = dialog.save_finish(result)
-                path = gfile.get_path()
-                if path:
-                    if not path.lower().endswith(".json"):
-                        path += ".json"
-                    success = export_tierlist_to_json(self.tierlist_data, path)
-                    if success:
-                        self.toast_overlay.add_toast(Adw.Toast.new("Arquivo JSON exportado"))
+                if gfile:
+                    out_path = gfile.get_path()
+                    if export_tierlist_to_json(self.tierlist_data, out_path):
+                        self.toast_overlay.add_toast(Adw.Toast.new("Arquivo JSON exportado com sucesso"))
             except Exception as e:
                 print(f"[Export JSON] Cancelled: {e}")
 
         file_dialog.save(self, None, on_saved_json)
 
     def _on_import_json_action(self, action, param):
-        file_dialog = Gtk.FileDialog()
-        file_dialog.set_title("Importar Tier List de JSON")
+        file_dialog = Gtk.FileDialog.new()
+        file_dialog.set_title("Importar Tier List (JSON)")
+
+        json_filter = Gtk.FileFilter.new()
+        json_filter.set_name("Arquivo JSON (*.json)")
+        json_filter.add_pattern("*.json")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(json_filter)
+        file_dialog.set_filters(filters)
 
         def on_opened_json(dialog, result):
             try:
                 gfile = dialog.open_finish(result)
-                path = gfile.get_path()
-                if path:
-                    imported = import_tierlist_from_json(path)
+                if gfile:
+                    in_path = gfile.get_path()
+                    imported = import_tierlist_from_json(in_path)
                     if imported:
                         self.tierlist_data = imported
                         save_tierlist(self.tierlist_data)
                         self._update_filter_dropdown_models()
+                        self._build_sidebar_items()
                         self._build_tier_rows()
                         self._populate_all_games()
                         self.toast_overlay.add_toast(Adw.Toast.new("Tier list importada com sucesso"))
@@ -733,6 +1092,7 @@ class LudustierWindow(Adw.ApplicationWindow):
                 self.tierlist_data["games"] = []
                 save_tierlist(self.tierlist_data)
                 self._update_filter_dropdown_models()
+                self._build_sidebar_items()
                 self._populate_all_games()
                 self.toast_overlay.add_toast(Adw.Toast.new("Lista limpa"))
 

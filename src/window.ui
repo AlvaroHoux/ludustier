@@ -6,6 +6,10 @@
   <menu id="primary_menu">
     <section>
       <item>
+        <attribute name="label" translatable="yes">Importar do Lutris / Heroic...</attribute>
+        <attribute name="action">win.import_lutris</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Exportar como Imagem (PNG)...</attribute>
         <attribute name="action">win.export_png</attribute>
       </item>
@@ -38,8 +42,8 @@
 
   <template class="LudustierWindow" parent="AdwApplicationWindow">
     <property name="title" translatable="yes">LudusTier</property>
-    <property name="default-width">1040</property>
-    <property name="default-height">740</property>
+    <property name="default-width">1180</property>
+    <property name="default-height">780</property>
 
     <property name="content">
       <object class="AdwToastOverlay" id="toast_overlay">
@@ -54,11 +58,27 @@
                     <property name="orientation">horizontal</property>
                     <property name="spacing">6</property>
                     <child>
+                      <object class="GtkToggleButton" id="btn_toggle_sidebar">
+                        <property name="icon-name">sidebar-show-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Alternar barra lateral</property>
+                        <property name="active">True</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkButton" id="btn_add_game">
                         <property name="icon-name">list-add-symbolic</property>
                         <property name="tooltip-text" translatable="yes">Adicionar jogo</property>
                         <style>
                           <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="btn_import_lutris">
+                        <property name="icon-name">media-optical-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Importar do Lutris / Heroic</property>
+                        <style>
+                          <class name="flat"/>
                         </style>
                       </object>
                     </child>
@@ -164,120 +184,148 @@
               </object>
             </child>
 
-            <!-- Main Scrollable Content -->
+            <!-- Main Split Layout (Sidebar + Content) -->
             <property name="content">
-              <object class="GtkScrolledWindow">
-                <property name="vexpand">True</property>
-                <property name="hexpand">True</property>
-                <property name="hscrollbar-policy">never</property>
-                <property name="vscrollbar-policy">automatic</property>
+              <object class="AdwOverlaySplitView" id="split_view">
+                <property name="show-sidebar">True</property>
+                <property name="min-sidebar-width">210</property>
+                <property name="max-sidebar-width">260</property>
 
-                <property name="child">
-                  <object class="AdwClamp">
-                    <property name="maximum-size">1100</property>
-                    <property name="margin-top">18</property>
-                    <property name="margin-bottom">24</property>
-                    <property name="margin-start">12</property>
-                    <property name="margin-end">12</property>
-
+                <!-- Sidebar Pane -->
+                <property name="sidebar">
+                  <object class="GtkScrolledWindow">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="vscrollbar-policy">automatic</property>
                     <property name="child">
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
-                        <property name="spacing">18</property>
+                        <property name="spacing">12</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">12</property>
+                        <property name="margin-start">8</property>
+                        <property name="margin-end">8</property>
 
-                        <!-- Banner for Active Filter -->
+                        <!-- Group: Biblioteca / Visualizações -->
                         <child>
-                          <object class="AdwBanner" id="filter_banner">
-                            <property name="title">Filtro ativo</property>
-                            <property name="button-label" translatable="yes">Limpar</property>
-                            <property name="revealed">False</property>
-                          </object>
-                        </child>
-
-                        <!-- Empty State (StatusPage) -->
-                        <child>
-                          <object class="AdwStatusPage" id="empty_state">
-                            <property name="icon-name">applications-games-symbolic</property>
-                            <property name="title" translatable="yes">Nenhum Jogo na Lista</property>
-                            <property name="description" translatable="yes">Adicione jogos para começar a montar sua tier list personalizada.</property>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">4</property>
                             <child>
-                              <object class="GtkButton" id="btn_empty_add_game">
-                                <property name="label" translatable="yes">Adicionar Jogo</property>
-                                <property name="halign">center</property>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Biblioteca</property>
+                                <property name="halign">start</property>
+                                <property name="margin-start">8</property>
                                 <style>
-                                  <class name="pill"/>
-                                  <class name="suggested-action"/>
+                                  <class name="caption-heading"/>
+                                  <class name="dimmed"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkListBox" id="sidebar_nav_list">
+                                <property name="selection-mode">single</property>
+                                <style>
+                                  <class name="navigation-sidebar"/>
                                 </style>
                               </object>
                             </child>
                           </object>
                         </child>
 
-                        <!-- Tier List Main Content -->
+                        <!-- Group: Status -->
                         <child>
-                          <object class="GtkBox" id="main_content_box">
+                          <object class="GtkBox">
                             <property name="orientation">vertical</property>
-                            <property name="spacing">18</property>
-
-                            <!-- Ranked Tiers Container -->
+                            <property name="spacing">4</property>
                             <child>
-                              <object class="GtkBox" id="tiers_container">
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">12</property>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Status de Jogo</property>
+                                <property name="halign">start</property>
+                                <property name="margin-start">8</property>
+                                <style>
+                                  <class name="caption-heading"/>
+                                  <class name="dimmed"/>
+                                </style>
                               </object>
                             </child>
-
-                            <!-- Separator -->
                             <child>
-                              <object class="GtkSeparator">
-                                <property name="margin-top">6</property>
-                                <property name="margin-bottom">6</property>
+                              <object class="GtkListBox" id="sidebar_status_list">
+                                <property name="selection-mode">single</property>
+                                <style>
+                                  <class name="navigation-sidebar"/>
+                                </style>
                               </object>
                             </child>
+                          </object>
+                        </child>
 
-                            <!-- Unranked Bank -->
+                        <!-- Group: Categorias -->
+                        <child>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">4</property>
                             <child>
                               <object class="GtkBox">
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">8</property>
-
+                                <property name="orientation">horizontal</property>
+                                <property name="spacing">6</property>
+                                <property name="margin-start">8</property>
                                 <child>
-                                  <object class="GtkBox">
-                                    <property name="orientation">horizontal</property>
-                                    <property name="spacing">8</property>
-                                    <child>
-                                      <object class="GtkLabel">
-                                        <property name="label" translatable="yes">Banco de Jogos</property>
-                                        <property name="halign">start</property>
-                                        <property name="hexpand">True</property>
-                                        <style>
-                                          <class name="title-3"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="unranked_count_label">
-                                        <property name="label">0 jogos</property>
-                                        <style>
-                                          <class name="dimmed"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-
-                                <child>
-                                  <object class="GtkBox" id="unranked_container">
-                                    <property name="orientation">vertical</property>
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Categorias</property>
+                                    <property name="halign">start</property>
                                     <property name="hexpand">True</property>
                                     <style>
-                                      <class name="card"/>
+                                      <class name="caption-heading"/>
+                                      <class name="dimmed"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="btn_add_category">
+                                    <property name="icon-name">list-add-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Nova categoria</property>
+                                    <style>
+                                      <class name="flat"/>
                                     </style>
                                   </object>
                                 </child>
                               </object>
                             </child>
+                            <child>
+                              <object class="GtkListBox" id="sidebar_category_list">
+                                <property name="selection-mode">single</property>
+                                <style>
+                                  <class name="navigation-sidebar"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
 
+                        <!-- Group: Fontes & Integrações -->
+                        <child>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">4</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="label" translatable="yes">Fontes</property>
+                                <property name="halign">start</property>
+                                <property name="margin-start">8</property>
+                                <style>
+                                  <class name="caption-heading"/>
+                                  <class name="dimmed"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkListBox" id="sidebar_source_list">
+                                <property name="selection-mode">single</property>
+                                <style>
+                                  <class name="navigation-sidebar"/>
+                                </style>
+                              </object>
+                            </child>
                           </object>
                         </child>
 
@@ -285,6 +333,333 @@
                     </property>
                   </object>
                 </property>
+
+                <!-- Content Pane (ViewStack for TierList vs Library Grid) -->
+                <property name="content">
+                  <object class="AdwViewStack" id="main_view_stack">
+
+                    <!-- Page 1: Tier List View -->
+                    <child>
+                      <object class="AdwViewStackPage">
+                        <property name="name">tierlist</property>
+                        <property name="title" translatable="yes">Tier List</property>
+                        <property name="child">
+                          <object class="GtkScrolledWindow">
+                            <property name="vexpand">True</property>
+                            <property name="hexpand">True</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="vscrollbar-policy">automatic</property>
+
+                            <property name="child">
+                              <object class="AdwClamp">
+                                <property name="maximum-size">1100</property>
+                                <property name="margin-top">18</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+
+                                <property name="child">
+                                  <object class="GtkBox">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">18</property>
+
+                                    <!-- Banner for Active Filter -->
+                                    <child>
+                                      <object class="AdwBanner" id="filter_banner">
+                                        <property name="title">Filtro ativo</property>
+                                        <property name="button-label" translatable="yes">Limpar</property>
+                                        <property name="revealed">False</property>
+                                      </object>
+                                    </child>
+
+                                    <!-- Empty State (StatusPage) -->
+                                    <child>
+                                      <object class="AdwStatusPage" id="empty_state">
+                                        <property name="icon-name">applications-games-symbolic</property>
+                                        <property name="title" translatable="yes">Nenhum Jogo na Lista</property>
+                                        <property name="description" translatable="yes">Adicione jogos para começar a montar sua tier list personalizada.</property>
+                                        <child>
+                                          <object class="GtkButton" id="btn_empty_add_game">
+                                            <property name="label" translatable="yes">Adicionar Jogo</property>
+                                            <property name="halign">center</property>
+                                            <style>
+                                              <class name="pill"/>
+                                              <class name="suggested-action"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+
+                                    <!-- Tier List Main Content -->
+                                    <child>
+                                      <object class="GtkBox" id="main_content_box">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">18</property>
+
+                                        <!-- Ranked Tiers Container -->
+                                        <child>
+                                          <object class="GtkBox" id="tiers_container">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">12</property>
+                                          </object>
+                                        </child>
+
+                                        <!-- Separator -->
+                                        <child>
+                                          <object class="GtkSeparator">
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                          </object>
+                                        </child>
+
+                                        <!-- Unranked Bank -->
+                                        <child>
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">8</property>
+
+                                            <child>
+                                              <object class="GtkBox">
+                                                <property name="orientation">horizontal</property>
+                                                <property name="spacing">8</property>
+                                                <child>
+                                                  <object class="GtkLabel">
+                                                    <property name="label" translatable="yes">Banco de Jogos</property>
+                                                    <property name="halign">start</property>
+                                                    <property name="hexpand">True</property>
+                                                    <style>
+                                                      <class name="title-3"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="GtkLabel" id="unranked_count_label">
+                                                    <property name="label">0 jogos</property>
+                                                    <style>
+                                                      <class name="dimmed"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+
+                                            <child>
+                                              <object class="GtkBox" id="unranked_container">
+                                                <property name="orientation">vertical</property>
+                                                <property name="hexpand">True</property>
+                                                <style>
+                                                  <class name="card"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+
+                                      </object>
+                                    </child>
+
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                    <!-- Page 2: Library Grid View (Lutris Style) -->
+                    <child>
+                      <object class="AdwViewStackPage">
+                        <property name="name">library</property>
+                        <property name="title" translatable="yes">Biblioteca</property>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+
+                            <child>
+                              <object class="GtkScrolledWindow">
+                                <property name="vexpand">True</property>
+                                <property name="hexpand">True</property>
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="vscrollbar-policy">automatic</property>
+
+                                <property name="child">
+                                  <object class="AdwClamp">
+                                    <property name="maximum-size">1200</property>
+                                    <property name="margin-top">18</property>
+                                    <property name="margin-bottom">18</property>
+                                    <property name="margin-start">16</property>
+                                    <property name="margin-end">16</property>
+
+                                    <property name="child">
+                                      <object class="GtkBox">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">12</property>
+
+                                        <child>
+                                          <object class="GtkBox">
+                                            <property name="orientation">horizontal</property>
+                                            <property name="spacing">8</property>
+                                            <child>
+                                              <object class="GtkLabel" id="library_title_label">
+                                                <property name="label" translatable="yes">Todos os Jogos</property>
+                                                <property name="halign">start</property>
+                                                <property name="hexpand">True</property>
+                                                <style>
+                                                  <class name="title-2"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+
+                                        <child>
+                                          <object class="GtkFlowBox" id="library_flowbox">
+                                            <property name="valign">start</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="selection-mode">none</property>
+                                            <property name="min-children-per-line">2</property>
+                                            <property name="max-children-per-line">20</property>
+                                            <property name="column-spacing">14</property>
+                                            <property name="row-spacing">14</property>
+                                          </object>
+                                        </child>
+
+                                      </object>
+                                    </property>
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+
+                            <!-- Bottom Action / Detail Bar (Lutris Style) -->
+                            <child>
+                              <object class="GtkRevealer" id="detail_bar_revealer">
+                                <property name="reveal-child">False</property>
+                                <property name="transition-type">slide-up</property>
+                                <property name="child">
+                                  <object class="GtkBox" id="detail_bar_box">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="spacing">16</property>
+                                    <style>
+                                      <class name="bottom-detail-bar"/>
+                                    </style>
+
+                                    <!-- Thumbnail -->
+                                    <child>
+                                      <object class="GtkPicture" id="detail_poster_pic">
+                                        <property name="content-fit">contain</property>
+                                        <property name="width-request">44</property>
+                                        <property name="height-request">66</property>
+                                        <style>
+                                          <class name="card"/>
+                                        </style>
+                                      </object>
+                                    </child>
+
+                                    <!-- Info labels -->
+                                    <child>
+                                      <object class="GtkBox">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">4</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="valign">center</property>
+
+                                        <child>
+                                          <object class="GtkLabel" id="detail_title_lbl">
+                                            <property name="label">Título do Jogo</property>
+                                            <property name="halign">start</property>
+                                            <style>
+                                              <class name="title-3"/>
+                                            </style>
+                                          </object>
+                                        </child>
+
+                                        <child>
+                                          <object class="GtkBox">
+                                            <property name="orientation">horizontal</property>
+                                            <property name="spacing">10</property>
+                                            <child>
+                                              <object class="GtkLabel" id="detail_platform_lbl">
+                                                <property name="label">Plataforma: Linux</property>
+                                                <style>
+                                                  <class name="caption"/>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel" id="detail_playtime_lbl">
+                                                <property name="label">Tempo: 0h</property>
+                                                <style>
+                                                  <class name="caption"/>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel" id="detail_status_lbl">
+                                                <property name="label">Status: Para Começar</property>
+                                                <style>
+                                                  <class name="caption"/>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel" id="detail_tier_lbl">
+                                                <property name="label">Tier: S</property>
+                                                <style>
+                                                  <class name="caption"/>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+
+                                    <!-- Actions -->
+                                    <child>
+                                      <object class="GtkBox">
+                                        <property name="orientation">horizontal</property>
+                                        <property name="spacing">6</property>
+                                        <property name="valign">center</property>
+                                        <child>
+                                          <object class="GtkButton" id="btn_detail_edit">
+                                            <property name="label" translatable="yes">Editar</property>
+                                            <style>
+                                              <class name="flat"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton" id="btn_detail_close">
+                                            <property name="icon-name">window-close-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Fechar painel</property>
+                                            <style>
+                                              <class name="flat"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+
+                                  </object>
+                                </property>
+                              </object>
+                            </child>
+
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+
+                  </object>
+                </property>
+
               </object>
             </property>
 

@@ -33,6 +33,8 @@ ludustier_sources = [
   'game_card.py',
   'game_edit_dialog.py',
   'main.py',
+  'lutris_importer.py',
+  'lutris_dialog.py',
   'preferences_dialog.py',
   'search_dialog.py',
   'steamgrid.py',

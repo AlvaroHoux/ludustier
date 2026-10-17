@@ -53,6 +53,16 @@ DEFAULT_VIEW_SETTINGS = {
     "view_mode": "poster", # "poster" (vertical 600x900), "header" (banner), "icon" (compact)
 }
 
+STATUS_CHOICES = [
+    {"id": "backlog", "name": "Para Começar", "icon": "appointment-soon-symbolic"},
+    {"id": "playing", "name": "Em Andamento", "icon": "media-playback-start-symbolic"},
+    {"id": "completed", "name": "Finalizado", "icon": "emblem-ok-symbolic"},
+    {"id": "platinum", "name": "Platinado", "icon": "starred-symbolic"},
+    {"id": "dropped", "name": "Abandonado", "icon": "process-stop-symbolic"},
+]
+
+DEFAULT_CATEGORIES: List[str] = ["Favoritos", "Cooperativo", "Em Rotação"]
+
 
 def ensure_directories():
     """Ensure user data and cache directories exist."""
@@ -109,6 +119,9 @@ def load_tierlist(filepath: Path = TIERLIST_FILE) -> dict:
 
     if "games" not in data or not isinstance(data["games"], list):
         data["games"] = []
+
+    if "categories" not in data or not isinstance(data["categories"], list):
+        data["categories"] = copy.deepcopy(DEFAULT_CATEGORIES)
 
     if "view_settings" not in data or not isinstance(data["view_settings"], dict):
         data["view_settings"] = copy.deepcopy(DEFAULT_VIEW_SETTINGS)

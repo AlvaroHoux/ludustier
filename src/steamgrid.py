@@ -198,6 +198,7 @@ def fetch_steam_game_details(steam_appid: int, title: str) -> Dict[str, Any]:
     cover_vertical_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{steam_appid}/library_600x900.jpg"
     cover_horizontal_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{steam_appid}/header.jpg"
     cover_icon_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{steam_appid}/capsule_231x87.jpg"
+    cover_logo_url = f"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{steam_appid}/logo.png"
 
     return {
         "developers": developers,
@@ -209,6 +210,7 @@ def fetch_steam_game_details(steam_appid: int, title: str) -> Dict[str, Any]:
         "cover_vertical_url": cover_vertical_url,
         "cover_horizontal_url": cover_horizontal_url,
         "cover_icon_url": cover_icon_url,
+        "cover_logo_url": cover_logo_url,
     }
 
 
@@ -393,6 +395,12 @@ def prepare_full_game_data(item: Dict) -> Dict:
     elif local_vert:
         local_icon = local_vert
 
+    # Download logo (transparent PNG)
+    logo_url = meta.get("cover_logo_url")
+    local_logo = None
+    if logo_url:
+        local_logo = download_image_to_cache(logo_url, f"cover_logo_{item['id']}")
+
     full_game = {
         "id": item["id"],
         "title": title,
@@ -408,6 +416,7 @@ def prepare_full_game_data(item: Dict) -> Dict:
         "cover_vertical": local_vert,
         "cover_horizontal": local_horiz,
         "cover_icon": local_icon,
+        "cover_logo": local_logo,
         "cover_path": local_vert or local_horiz or local_icon, # backwards compatibility
     }
 

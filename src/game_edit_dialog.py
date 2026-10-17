@@ -4,11 +4,13 @@
 
 from gi.repository import Gtk, Adw, GLib
 from typing import Callable, Dict, Any, Optional
+from .config import STATUS_CHOICES
 
 
 class GameEditDialog(Adw.Dialog):
     """
-    Dialog to inspect and edit a game's metadata (Title, Franchise, Company, Genres).
+    Dialog to inspect and edit a game's metadata (Title, Franchise, Company, Genres,
+    Status, Categories, and Playtime).
     Inherits from modern Adw.Dialog.
     """
 
@@ -20,8 +22,8 @@ class GameEditDialog(Adw.Dialog):
     ):
         super().__init__()
         self.set_title("Editar Informações do Jogo")
-        self.set_content_width(460)
-        self.set_content_height(400)
+        self.set_content_width(520)
+        self.set_content_height(580)
         self.game_data = game_data or {}
         self.on_saved = on_saved
 
@@ -44,8 +46,10 @@ class GameEditDialog(Adw.Dialog):
 
         # Preferences page with form rows
         page = Adw.PreferencesPage()
+
+        # Metadata Group
         group = Adw.PreferencesGroup()
-        group.set_title("Metadados do Jogo")
+        group.set_title("Metadados Principais")
         group.set_description(
             "Ajuste os dados para categorizar e filtrar seu jogo com precisão na Tier List."
         )
@@ -79,6 +83,43 @@ class GameEditDialog(Adw.Dialog):
             self.row_genres.set_text(str(genres_list))
         group.add(self.row_genres)
 
+        # Status & Progress Group
+        status_group = Adw.PreferencesGroup()
+        status_group.set_title("Progresso e Categorias")
+        page.add(status_group)
+
+        # Status Combo Row
+        self.row_status = Adw.ComboRow()
+        self.row_status.set_title("Status do Jogo")
+        status_model = Gtk.StringList.new([s["name"] for s in STATUS_CHOICES])
+        self.row_status.set_model(status_model)
+
+        current_status_id = self.game_data.get("status", "backlog")
+        selected_idx = 0
+        for i, s in enumerate(STATUS_CHOICES):
+            if s["id"] == current_status_id or s["name"] == current_status_id:
+                selected_idx = i
+                break
+        self.row_status.set_selected(selected_idx)
+        status_group.add(self.row_status)
+
+        # Playtime Spin Row
+        self.row_playtime = Adw.SpinRow.new_with_range(0.0, 99999.0, 0.5)
+        self.row_playtime.set_title("Tempo Jogado (Horas)")
+        self.row_playtime.set_digits(1)
+        self.row_playtime.set_value(float(self.game_data.get("playtime") or 0.0))
+        status_group.add(self.row_playtime)
+
+        # Categories Row
+        self.row_categories = Adw.EntryRow()
+        self.row_categories.set_title("Categorias (separadas por vírgula)")
+        cats_list = self.game_data.get("categories", [])
+        if isinstance(cats_list, list):
+            self.row_categories.set_text(", ".join(cats_list))
+        else:
+            self.row_categories.set_text(str(cats_list))
+        status_group.add(self.row_categories)
+
         toolbar_view.set_content(page)
 
     def _on_save_clicked(self, _):
@@ -89,13 +130,23 @@ class GameEditDialog(Adw.Dialog):
         franchise = self.row_franchise.get_text().strip()
         company = self.row_company.get_text().strip()
         genres_raw = self.row_genres.get_text()
-
         genres = [g.strip() for g in genres_raw.split(",") if g.strip()]
+
+        selected_status_idx = self.row_status.get_selected()
+        status_id = STATUS_CHOICES[selected_status_idx]["id"]
+
+        playtime = round(self.row_playtime.get_value(), 1)
+
+        cats_raw = self.row_categories.get_text()
+        categories = [c.strip() for c in cats_raw.split(",") if c.strip()]
 
         self.game_data["title"] = title
         self.game_data["franchise"] = franchise
         self.game_data["company"] = company
         self.game_data["genres"] = genres
+        self.game_data["status"] = status_id
+        self.game_data["playtime"] = playtime
+        self.game_data["categories"] = categories
 
         if self.on_saved:
             self.on_saved(self.game_data)
