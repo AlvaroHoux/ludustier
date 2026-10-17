@@ -151,12 +151,6 @@
                         </child>
 
                         <child>
-                          <object class="GtkDropDown" id="filter_franchise_dropdown">
-                            <property name="tooltip-text" translatable="yes">Filtrar por franquia</property>
-                          </object>
-                        </child>
-
-                        <child>
                           <object class="GtkDropDown" id="filter_company_dropdown">
                             <property name="tooltip-text" translatable="yes">Filtrar por empresa</property>
                           </object>

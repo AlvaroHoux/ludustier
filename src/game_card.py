@@ -3,10 +3,26 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
+import re
 from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Pango
 from typing import Callable, List, Dict, Optional, Any
 from .game_edit_dialog import GameEditDialog
 from .config import STATUS_CHOICES
+
+# Lutris ships its platform/runner icons here; reuse them (names are the lowercased, alphanumeric-only label)
+LUTRIS_ICON_DIR = os.path.expanduser("~/.local/share/lutris/runtime/icons")
+_icons_registered = False
+
+
+def type_icon(name: str) -> Optional[str]:
+    """Icon name for a runner or platform ("Wine", "Sony PlayStation 2"...), or None if the theme has none."""
+    global _icons_registered
+    theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    if not _icons_registered:
+        theme.add_search_path(LUTRIS_ICON_DIR)
+        _icons_registered = True
+    icon = re.sub(r"[^a-z0-9]", "", (name or "").lower()) + "-symbolic"
+    return icon if len(icon) > 9 and theme.has_icon(icon) else None
 
 
 # Exact 2:3 ratio for posters (width, height)
@@ -100,12 +116,15 @@ class GameCard(Gtk.Box):
         self.overlay.add_overlay(self.status_badge)
 
         # Source / Platform badge (bottom-right)
-        self.source_badge = Gtk.Label()
+        self.source_badge = Gtk.Box(spacing=4)
+        self.runner_icon = Gtk.Image()
+        self.platform_icon = Gtk.Image()
+        self.source_badge.append(self.platform_icon)
+        self.source_badge.append(self.runner_icon)
         self.source_badge.set_valign(Gtk.Align.END)
         self.source_badge.set_halign(Gtk.Align.END)
         self.source_badge.set_margin_bottom(6)
         self.source_badge.set_margin_end(6)
-        self.source_badge.add_css_class("caption")
         self.source_badge.add_css_class("card-source-badge")
         self.overlay.add_overlay(self.source_badge)
 
@@ -201,23 +220,18 @@ class GameCard(Gtk.Box):
         else:
             self.status_badge.set_visible(False)
 
-        # 2. Source / Platform badge
-        source = self.game_data.get("source", "")
+        # 2. Runner badge (Linux, Wine, Steam, Flatpak...), as in Lutris
+        runner = self.game_data.get("runner_name") or self.game_data.get("runner", "")
         platform = self.game_data.get("platform", "")
-        if source == "lutris":
-            self.source_badge.set_label("Lutris")
-            self.source_badge.set_visible(True)
-        elif source == "heroic":
-            self.source_badge.set_label("Heroic")
-            self.source_badge.set_visible(True)
-        elif source == "steam" or self.game_data.get("steam_appid"):
-            self.source_badge.set_label("Steam")
-            self.source_badge.set_visible(True)
-        elif platform:
-            self.source_badge.set_label(platform[:6])
-            self.source_badge.set_visible(True)
-        else:
-            self.source_badge.set_visible(False)
+        if self.game_data.get("steam_appid") and not runner:
+            runner = "Steam"
+        for img, name in ((self.platform_icon, platform), (self.runner_icon, runner)):
+            icon = type_icon(name)
+            img.set_visible(bool(icon))
+            if icon:
+                img.set_from_icon_name(icon)
+        self.source_badge.set_visible(self.platform_icon.get_visible() or self.runner_icon.get_visible())
+        self.source_badge.set_tooltip_text(f"{platform} · {runner}".strip(" ·"))
 
         # 3. Playtime badge
         playtime = float(self.game_data.get("playtime") or 0)
@@ -243,6 +257,7 @@ class GameCard(Gtk.Box):
             f"<b>{GLib.markup_escape_text(title)}</b>",
             f"Tier: {tier}",
             f"Status: {status}",
+            f"Plataforma: {self.game_data.get('platform') or '—'} ({self.game_data.get('runner_name') or self.game_data.get('runner') or '—'})",
             f"Tempo Jogado: {playtime:.1f} horas" if playtime > 0 else "Tempo Jogado: 0h",
             f"Franquia: {GLib.markup_escape_text(franchise)}",
             f"Empresa: {GLib.markup_escape_text(company)}",

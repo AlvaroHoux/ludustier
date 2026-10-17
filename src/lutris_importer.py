@@ -31,6 +31,14 @@ HEROIC_CONFIG_DIRS = [
 ]
 
 
+RUNNER_NAMES = {"linux": "Linux", "wine": "Wine", "steam": "Steam", "flatpak": "Flatpak", "pcsx2": "PCSX2"}
+
+
+def runner_label(runner: str) -> str:
+    """Lutris-style runner name (Linux, Wine, Steam, Flatpak, ...)."""
+    return RUNNER_NAMES.get(runner.lower(), runner.title()) if runner else ""
+
+
 def find_lutris_db() -> Optional[Path]:
     """Finds the local Lutris SQLite database path if available."""
     for p in LUTRIS_DB_PATHS:
@@ -143,6 +151,7 @@ def get_lutris_games() -> List[Dict[str, Any]]:
                 "tier": "UNRANKED",
                 "source": "lutris",
                 "runner": runner,
+                "runner_name": runner_label(runner),
                 "platform": platform,
                 "service": service,
                 "steam_appid": steam_appid,
@@ -182,13 +191,16 @@ def get_heroic_games() -> List[Dict[str, Any]]:
                     data = json.load(f)
                 for app_name, info in data.items():
                     title = info.get("title", app_name)
+                    windows = str(info.get("platform", "Windows")).lower() == "windows"
                     games.append({
                         "id": f"heroic_epic_{app_name}",
                         "title": title,
                         "tier": "UNRANKED",
                         "source": "heroic",
-                        "platform": "Epic Games",
-                        "runner": "Heroic",
+                        "platform": "Windows" if windows else "Linux",
+                        "runner": "wine" if windows else "linux",
+                        "runner_name": "Wine" if windows else "Linux",
+                        "service": "epic",
                         "playtime": 0.0,
                         "installed": True,
                         "status": "backlog",
@@ -214,13 +226,16 @@ def get_heroic_games() -> List[Dict[str, Any]]:
                     for info in installed_list:
                         app_name = info.get("appName", "")
                         title = info.get("title", app_name or "GOG Game")
+                        windows = str(info.get("platform", "windows")).lower() == "windows"
                         games.append({
                             "id": f"heroic_gog_{app_name}",
                             "title": title,
                             "tier": "UNRANKED",
                             "source": "heroic",
-                            "platform": "GOG",
-                            "runner": "Heroic",
+                            "platform": "Windows" if windows else "Linux",
+                            "runner": "wine" if windows else "linux",
+                            "runner_name": "Wine" if windows else "Linux",
+                            "service": "gog",
                             "playtime": 0.0,
                             "installed": True,
                             "status": "backlog",

@@ -17,6 +17,7 @@ from .config import (
 )
 from .game_card import (
     GameCard,
+    type_icon,
     DIMENSIONS_POSTER,
     DIMENSIONS_HEADER,
     DIMENSIONS_ICON,
@@ -53,7 +54,6 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     search_bar = Gtk.Template.Child()
     filter_search_entry = Gtk.Template.Child()
-    filter_franchise_dropdown = Gtk.Template.Child()
     filter_company_dropdown = Gtk.Template.Child()
     filter_genre_dropdown = Gtk.Template.Child()
     btn_clear_filters = Gtk.Template.Child()
@@ -106,7 +106,6 @@ class LudustierWindow(Adw.ApplicationWindow):
 
         # Active filter state
         self.filter_search = ""
-        self.filter_franchise = "Todas as Franquias"
         self.filter_company = "Todas as Empresas"
         self.filter_genre = "Todos os Gêneros"
 
@@ -168,9 +167,18 @@ class LudustierWindow(Adw.ApplicationWindow):
         games = self.tierlist_data["games"]
         known = {g["id"] for g in games} | set(self.tierlist_data.get("removed_ids", []))
         titles = {g["title"].lower() for g in games}
-        new = [g for g in get_lutris_games() if g["id"] not in known and g["title"].lower() not in titles]
-        if new:
-            games.extend(new)
+        fresh = get_lutris_games()
+        by_id = {g["id"]: g for g in games}
+        changed = False
+        for f in fresh:  # keep type/playtime current for games imported by older versions
+            old = by_id.get(f["id"])
+            for k in ("runner", "runner_name", "platform", "service", "installed", "playtime"):
+                if old is not None and old.get(k) != f.get(k):
+                    old[k] = f.get(k)
+                    changed = True
+        new = [g for g in fresh if g["id"] not in known and g["title"].lower() not in titles]
+        games.extend(new)
+        if new or changed:
             save_tierlist(self.tierlist_data)
 
     def _register_actions(self):
@@ -283,6 +291,45 @@ class LudustierWindow(Adw.ApplicationWindow):
         row_heroic.source_id = "heroic"
         self.sidebar_source_list.append(row_heroic)
 
+        self._build_type_sidebar(all_games)
+
+    def _build_type_sidebar(self, all_games):
+        """Runner and platform filters (Linux, Wine, Steam, Flatpak / Windows, PlayStation 2...), as in Lutris."""
+        if not hasattr(self, "sidebar_type_lists"):
+            parent = self.sidebar_source_list.get_parent()
+            self.sidebar_type_lists = {}
+            for key, title in (("runner", "Runners"), ("platform", "Plataformas")):
+                label = Gtk.Label(label=title, halign=Gtk.Align.START, margin_start=8, margin_top=12)
+                label.add_css_class("caption-heading")
+                label.add_css_class("dimmed")
+                lb = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+                lb.add_css_class("navigation-sidebar")
+                lb.connect("row-activated", self._on_type_row_activated)
+                parent.append(label)
+                parent.append(lb)
+                self.sidebar_type_lists[key] = lb
+        for key, lb in self.sidebar_type_lists.items():
+            while child := lb.get_first_child():
+                lb.remove(child)
+            field = "runner_name" if key == "runner" else "platform"
+            counts = {}
+            for g in all_games:
+                v = g.get(field) or (g.get("runner") if key == "runner" else "")
+                if v:
+                    counts[v] = counts.get(v, 0) + 1
+            for value in sorted(counts):
+                row = self._create_sidebar_row(type_icon(value) or "applications-games-symbolic", value, str(counts[value]))
+                row.type_filter = (key, value)
+                lb.append(row)
+
+    def _on_type_row_activated(self, listbox, row):
+        key, value = row.type_filter
+        self.current_sidebar_mode = f"{key}:{value}"
+        self.main_view_stack.set_visible_child_name("library")
+        self.library_title_label.set_label(f"{'Runner' if key == 'runner' else 'Plataforma'}: {value}")
+        self.window_title.set_subtitle(value)
+        self._apply_filters()
+
     def _create_sidebar_row(self, icon_name: str, label_text: str, badge_text: str = "") -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -320,7 +367,7 @@ class LudustierWindow(Adw.ApplicationWindow):
             self.main_view_stack.set_visible_child_name("library")
             self.library_title_label.set_label("Todos os Jogos")
             self.window_title.set_subtitle("Todos os Jogos")
-        self._populate_all_games()
+        self._apply_filters()
 
     def _on_status_row_activated(self, listbox, row):
         s_id = getattr(row, "status_id", "")
@@ -329,7 +376,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.main_view_stack.set_visible_child_name("library")
         self.library_title_label.set_label(f"Status: {s_name}")
         self.window_title.set_subtitle(s_name)
-        self._populate_all_games()
+        self._apply_filters()
 
     def _on_category_row_activated(self, listbox, row):
         cat_name = getattr(row, "category_name", "")
@@ -337,7 +384,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.main_view_stack.set_visible_child_name("library")
         self.library_title_label.set_label(f"Categoria: {cat_name}")
         self.window_title.set_subtitle(cat_name)
-        self._populate_all_games()
+        self._apply_filters()
 
     def _on_source_row_activated(self, listbox, row):
         src_id = getattr(row, "source_id", "")
@@ -346,7 +393,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.main_view_stack.set_visible_child_name("library")
         self.library_title_label.set_label(f"Fonte: {src_name}")
         self.window_title.set_subtitle(src_name)
-        self._populate_all_games()
+        self._apply_filters()
 
     def _on_add_category_clicked(self, _):
         dialog = Adw.AlertDialog.new("Nova Categoria", "Digite o nome da nova categoria para seus jogos.")
@@ -401,7 +448,7 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.detail_title_lbl.set_label(game_data.get("title", ""))
 
         platform = game_data.get("platform") or "Linux"
-        runner = game_data.get("runner") or game_data.get("source", "")
+        runner = game_data.get("runner_name") or game_data.get("runner") or game_data.get("source", "")
         self.detail_platform_lbl.set_label(f"Plataforma: {platform} ({runner})")
 
         playtime = float(game_data.get("playtime") or 0)
@@ -425,7 +472,6 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _setup_search_and_filters(self):
         self.filter_search_entry.connect("search-changed", self._on_search_query_changed)
-        self.filter_franchise_dropdown.connect("notify::selected", self._on_franchise_filter_changed)
         self.filter_company_dropdown.connect("notify::selected", self._on_company_filter_changed)
         self.filter_genre_dropdown.connect("notify::selected", self._on_genre_filter_changed)
         self.btn_clear_filters.connect("clicked", self._on_clear_filters_clicked)
@@ -737,16 +783,7 @@ class LudustierWindow(Adw.ApplicationWindow):
             gid = game["id"]
             tier_id = game.get("tier", "UNRANKED")
 
-            # --- Add to Tierlist View ---
-            card = GameCard(
-                game_data=game,
-                tiers=tiers,
-                on_tier_changed=self.move_game_to_tier,
-                on_deleted=self.delete_game,
-                on_updated=self.update_game_data,
-                view_mode=self.current_view_mode,
-                zoom_level=self.current_zoom,
-            )
+            card = self._make_card(game, tiers)
             self.game_cards[gid] = card
 
             target_fb = self.tier_flowboxes.get(tier_id)
@@ -756,33 +793,35 @@ class LudustierWindow(Adw.ApplicationWindow):
             if target_fb:
                 target_fb.append(card)
 
-            # --- Add to Library View ---
-            lib_card = GameCard(
-                game_data=game,
-                tiers=tiers,
-                on_tier_changed=self.move_game_to_tier,
-                on_deleted=self.delete_game,
-                on_updated=self.update_game_data,
-                view_mode=self.current_view_mode,
-                zoom_level=self.current_zoom,
-                on_selected=self._show_game_in_detail_bar,
-            )
+            lib_card = self._make_card(game, tiers, on_selected=self._show_game_in_detail_bar)
             self.library_cards[gid] = lib_card
             self.library_flowbox.append(lib_card)
 
         self._apply_filters()
 
+    def _make_card(self, game, tiers, on_selected=None) -> GameCard:
+        return GameCard(
+            game_data=game,
+            tiers=tiers,
+            on_tier_changed=self.move_game_to_tier,
+            on_deleted=self.delete_game,
+            on_updated=self.update_game_data,
+            view_mode=self.current_view_mode,
+            zoom_level=self.current_zoom,
+            on_selected=on_selected,
+        )
+
     def _apply_filters(self):
         unranked_visible_count = 0
         for gid, card in self.game_cards.items():
             matches = self._game_matches_filters(card.game_data)
-            card.set_visible(matches)
+            card.get_parent().set_visible(matches)
             if matches and card.game_data.get("tier", "UNRANKED") == "UNRANKED":
                 unranked_visible_count += 1
 
         for gid, card in self.library_cards.items():
             matches = self._game_matches_filters(card.game_data) and self._game_matches_sidebar_selection(card.game_data)
-            card.set_visible(matches)
+            card.get_parent().set_visible(matches)
 
         self.unranked_count_label.set_label(f"{unranked_visible_count} jogos")
         self._update_filter_banner()
@@ -797,6 +836,10 @@ class LudustierWindow(Adw.ApplicationWindow):
         if mode.startswith("category:"):
             target_cat = mode.split(":", 1)[1]
             return target_cat in game.get("categories", [])
+        if mode.startswith("runner:"):
+            return (game.get("runner_name") or game.get("runner")) == mode.split(":", 1)[1]
+        if mode.startswith("platform:"):
+            return game.get("platform") == mode.split(":", 1)[1]
         if mode.startswith("source:"):
             target_src = mode.split(":", 1)[1]
             return game.get("source") == target_src
@@ -804,16 +847,11 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _game_matches_filters(self, game: Dict[str, Any]) -> bool:
         title = game.get("title", "").lower()
-        franchise = (game.get("franchise") or "").lower()
         company = (game.get("company") or "").lower()
         genres = [g.lower() for g in game.get("genres", [])]
 
         if self.filter_search and self.filter_search.lower() not in title:
             return False
-
-        if self.filter_franchise != "Todas as Franquias":
-            if franchise != self.filter_franchise.lower():
-                return False
 
         if self.filter_company != "Todas as Empresas":
             if company != self.filter_company.lower():
@@ -829,8 +867,6 @@ class LudustierWindow(Adw.ApplicationWindow):
         active_parts = []
         if self.filter_search:
             active_parts.append(f"Busca: '{self.filter_search}'")
-        if self.filter_franchise != "Todas as Franquias":
-            active_parts.append(f"Franquia: {self.filter_franchise}")
         if self.filter_company != "Todas as Empresas":
             active_parts.append(f"Empresa: {self.filter_company}")
         if self.filter_genre != "Todos os Gêneros":
@@ -857,14 +893,16 @@ class LudustierWindow(Adw.ApplicationWindow):
         # Deferred: removing the dragged widget inside its own drop handler is unsafe
         GLib.idle_add(self._reparent_card, card, target_fb)
 
-    def _reparent_card(self, card: Gtk.Widget, target_fb: Gtk.FlowBox):
-        card.get_parent().get_parent().remove(card.get_parent())
+    def _reparent_card(self, old_card: Gtk.Widget, target_fb: Gtk.FlowBox):
+        """Swaps the moved game's card for a fresh one in the target tier (cheap: one card, not the whole list)."""
+        gid = old_card.game_id
+        old_card.get_parent().get_parent().remove(old_card.get_parent())
+        card = self._make_card(self.library_cards[gid].game_data, self.tierlist_data.get("tiers", DEFAULT_TIERS))
+        self.game_cards[gid] = card
         target_fb.append(card)
-        # Menus disable the current tier, so rebuild them for the moved card and its library twin
-        for c in (card, self.library_cards.get(card.game_id)):
-            if c:
-                c._setup_menu()
-                c._update_tooltip()
+        lib = self.library_cards[gid]
+        lib._setup_menu()
+        lib._update_tooltip()
         self._apply_filters()
         return False
 
@@ -989,14 +1027,6 @@ class LudustierWindow(Adw.ApplicationWindow):
         self.filter_search = entry.get_text().strip()
         self._populate_all_games()
 
-    def _on_franchise_filter_changed(self, dropdown, _):
-        if self._updating_filter_models:
-            return
-        selected_item = dropdown.get_selected_item()
-        if selected_item:
-            self.filter_franchise = selected_item.get_string()
-            self._populate_all_games()
-
     def _on_company_filter_changed(self, dropdown, _):
         if self._updating_filter_models:
             return
@@ -1015,11 +1045,9 @@ class LudustierWindow(Adw.ApplicationWindow):
 
     def _on_clear_filters_clicked(self, _):
         self.filter_search_entry.set_text("")
-        self.filter_franchise_dropdown.set_selected(0)
         self.filter_company_dropdown.set_selected(0)
         self.filter_genre_dropdown.set_selected(0)
         self.filter_search = ""
-        self.filter_franchise = "Todas as Franquias"
         self.filter_company = "Todas as Empresas"
         self.filter_genre = "Todos os Gêneros"
         self._populate_all_games()
@@ -1027,24 +1055,19 @@ class LudustierWindow(Adw.ApplicationWindow):
     def _update_filter_dropdown_models(self):
         self._updating_filter_models = True
 
-        franchises = set()
         companies = set()
         genres = set()
 
         for g in self.tierlist_data.get("games", []):
-            if f := g.get("franchise"):
-                franchises.add(f)
             if c := g.get("company"):
                 companies.add(c)
             for gen in g.get("genres", []):
                 if gen:
                     genres.add(gen)
 
-        f_list = ["Todas as Franquias"] + sorted(list(franchises))
         c_list = ["Todas as Empresas"] + sorted(list(companies))
         g_list = ["Todos os Gêneros"] + sorted(list(genres))
 
-        self.filter_franchise_dropdown.set_model(Gtk.StringList.new(f_list))
         self.filter_company_dropdown.set_model(Gtk.StringList.new(c_list))
         self.filter_genre_dropdown.set_model(Gtk.StringList.new(g_list))
 

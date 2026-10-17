@@ -9,6 +9,10 @@ import unittest
 from pathlib import Path
 from PIL import Image
 
+# Keep tests away from the user's real tierlist and config
+for _var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"):
+    os.environ[_var] = tempfile.mkdtemp(prefix="ludustier-test-")
+
 # Ensure repository root is on sys.path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -279,61 +283,52 @@ class TestWindowAndFeatures(unittest.TestCase):
         self.win._update_filter_dropdown_models()
         self.win._populate_all_games()
 
-    def test_filtering_by_franchise_company_and_genre(self):
+    def test_filtering_by_company_and_genre(self):
         self._populate_test_games()
 
         # Check all 4 games initially visible
         self.assertEqual(len(self.win.game_cards), 4)
         for card in self.win.game_cards.values():
-            self.assertTrue(card.get_visible())
-
-        # 1. Filter by Franchise: "Resident Evil"
-        self.win.filter_franchise = "Resident Evil"
-        self.win._apply_filters()
-        self.assertTrue(self.win.game_cards["g1"].get_visible()) # RE4
-        self.assertTrue(self.win.game_cards["g2"].get_visible()) # RE Village
-        self.assertFalse(self.win.game_cards["g3"].get_visible()) # DMC5 (Capcom, but not RE)
-        self.assertFalse(self.win.game_cards["g4"].get_visible()) # DS3
+            self.assertTrue(card.get_parent().get_visible())
 
         # 2. Filter by Company: "Capcom"
-        self.win.filter_franchise = "Todas as Franquias"
         self.win.filter_company = "Capcom"
         self.win._apply_filters()
-        self.assertTrue(self.win.game_cards["g1"].get_visible()) # RE4
-        self.assertTrue(self.win.game_cards["g2"].get_visible()) # RE Village
-        self.assertTrue(self.win.game_cards["g3"].get_visible()) # DMC5 (Capcom)
-        self.assertFalse(self.win.game_cards["g4"].get_visible()) # DS3 (FromSoftware)
+        self.assertTrue(self.win.game_cards["g1"].get_parent().get_visible()) # RE4
+        self.assertTrue(self.win.game_cards["g2"].get_parent().get_visible()) # RE Village
+        self.assertTrue(self.win.game_cards["g3"].get_parent().get_visible()) # DMC5 (Capcom)
+        self.assertFalse(self.win.game_cards["g4"].get_parent().get_visible()) # DS3 (FromSoftware)
 
         # 3. Filter by Company: "FromSoftware"
         self.win.filter_company = "FromSoftware"
         self.win._apply_filters()
-        self.assertFalse(self.win.game_cards["g1"].get_visible())
-        self.assertFalse(self.win.game_cards["g2"].get_visible())
-        self.assertFalse(self.win.game_cards["g3"].get_visible())
-        self.assertTrue(self.win.game_cards["g4"].get_visible())
+        self.assertFalse(self.win.game_cards["g1"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g2"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g3"].get_parent().get_visible())
+        self.assertTrue(self.win.game_cards["g4"].get_parent().get_visible())
 
         # 4. Filter by Genre: "Survival Horror"
         self.win.filter_company = "Todas as Empresas"
         self.win.filter_genre = "Survival Horror"
         self.win._apply_filters()
-        self.assertTrue(self.win.game_cards["g1"].get_visible())
-        self.assertTrue(self.win.game_cards["g2"].get_visible())
-        self.assertFalse(self.win.game_cards["g3"].get_visible())
-        self.assertFalse(self.win.game_cards["g4"].get_visible())
+        self.assertTrue(self.win.game_cards["g1"].get_parent().get_visible())
+        self.assertTrue(self.win.game_cards["g2"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g3"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g4"].get_parent().get_visible())
 
         # 5. Search Text Filter: "Village"
         self.win.filter_genre = "Todos os Gêneros"
         self.win.filter_search = "village"
         self.win._apply_filters()
-        self.assertFalse(self.win.game_cards["g1"].get_visible())
-        self.assertTrue(self.win.game_cards["g2"].get_visible())
-        self.assertFalse(self.win.game_cards["g3"].get_visible())
-        self.assertFalse(self.win.game_cards["g4"].get_visible())
+        self.assertFalse(self.win.game_cards["g1"].get_parent().get_visible())
+        self.assertTrue(self.win.game_cards["g2"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g3"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g4"].get_parent().get_visible())
 
         # 6. Clear Filters
         self.win._on_clear_filters_clicked(None)
         for card in self.win.game_cards.values():
-            self.assertTrue(card.get_visible())
+            self.assertTrue(card.get_parent().get_visible())
 
     def test_zoom_and_view_mode_controls(self):
         card = self.win.game_cards.get("g1")
@@ -354,18 +349,17 @@ class TestWindowAndFeatures(unittest.TestCase):
 
     def test_combined_filters(self):
         self._populate_test_games()
-        # Filter simultaneously by Franchise: Resident Evil AND Genre: Adventure
-        self.win.filter_franchise = "Resident Evil"
+        # Filter simultaneously by Company AND Genre: Adventure
         self.win.filter_company = "Capcom"
         self.win.filter_genre = "Adventure"
         self.win.filter_search = "4"
         self.win._apply_filters()
 
-        # Only RE4 matches all criteria: Franchise RE, Company Capcom, Genre Adventure, Search "4"
-        self.assertTrue(self.win.game_cards["g1"].get_visible())
-        self.assertFalse(self.win.game_cards["g2"].get_visible()) # RE Village has no "4"
-        self.assertFalse(self.win.game_cards["g3"].get_visible())
-        self.assertFalse(self.win.game_cards["g4"].get_visible())
+        # Only RE4 matches all criteria: Company Capcom, Genre Adventure, Search "4"
+        self.assertTrue(self.win.game_cards["g1"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g2"].get_parent().get_visible()) # RE Village has no "4"
+        self.assertFalse(self.win.game_cards["g3"].get_parent().get_visible())
+        self.assertFalse(self.win.game_cards["g4"].get_parent().get_visible())
 
     def test_game_edit_dialog_logic(self):
         from src.game_edit_dialog import GameEditDialog
