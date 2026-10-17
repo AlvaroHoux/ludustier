@@ -847,12 +847,26 @@ class LudustierWindow(Adw.ApplicationWindow):
     # --------------------------------------------------------------------------
 
     def move_game_to_tier(self, game_id: str, new_tier_id: str):
-        for g in self.tierlist_data.get("games", []):
-            if g["id"] == game_id:
-                g["tier"] = new_tier_id
-                break
+        game = next((g for g in self.tierlist_data.get("games", []) if g["id"] == game_id), None)
+        card = self.game_cards.get(game_id)
+        target_fb = self.tier_flowboxes.get(new_tier_id)
+        if not game or not card or not target_fb:
+            return
+        game["tier"] = new_tier_id
         save_tierlist(self.tierlist_data)
-        self._populate_all_games()
+        # Deferred: removing the dragged widget inside its own drop handler is unsafe
+        GLib.idle_add(self._reparent_card, card, target_fb)
+
+    def _reparent_card(self, card: Gtk.Widget, target_fb: Gtk.FlowBox):
+        card.get_parent().get_parent().remove(card.get_parent())
+        target_fb.append(card)
+        # Menus disable the current tier, so rebuild them for the moved card and its library twin
+        for c in (card, self.library_cards.get(card.game_id)):
+            if c:
+                c._setup_menu()
+                c._update_tooltip()
+        self._apply_filters()
+        return False
 
     def update_game_data(self, updated_game: Dict[str, Any]):
         games = self.tierlist_data.get("games", [])
